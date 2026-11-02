@@ -35,6 +35,7 @@ from bs4 import BeautifulSoup
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this section
 # --------------------------------------------------------------------------- #
+LAST_RETRIEVAL_METHOD = {}
 FTP_HOST = "ftp.bom.gov.au"
 FTP_DIRECTORY = "/anon/gen/fwo"
 FTP_TIMEOUT = 20
@@ -224,7 +225,7 @@ def fetch_html_from_https(product):
 
 def fetch_html(product):
     """
-    Retrieve the latest BoM product.
+    Retrieve the latest BoM rainfall product.
 
     Retrieval order:
     1. BoM anonymous FTP
@@ -235,6 +236,10 @@ def fetch_html(product):
 
     try:
         html = fetch_html_from_ftp(product)
+
+        LAST_RETRIEVAL_METHOD[product] = (
+            f"BoM FTP {product}.html"
+        )
 
         return html
 
@@ -247,15 +252,24 @@ def fetch_html(product):
         )
 
     try:
-        return fetch_html_from_https(product)
+        html = fetch_html_from_https(product)
+
+        LAST_RETRIEVAL_METHOD[product] = (
+            f"BoM HTTPS fallback {product}"
+        )
+
+        return html
 
     except BulletinError as https_error:
+        LAST_RETRIEVAL_METHOD[product] = (
+            "Retrieval failed"
+        )
+
         raise BulletinError(
             f"{product}: both retrieval methods failed. "
             f"FTP error: {ftp_error}. "
             f"HTTPS error: {https_error}"
         ) from https_error
-
 # ---Temporary FTP TEST---
 def test_ftp_connection():
     """
