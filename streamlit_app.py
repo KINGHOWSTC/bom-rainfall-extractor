@@ -421,7 +421,7 @@ if forecast_rows:
     )
 
 
-st.subheader("Rainfall - Occured")
+st.subheader("Rainfall Occured")
 
 st.dataframe(
     latest_table(df),
