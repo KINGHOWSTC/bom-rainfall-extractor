@@ -195,7 +195,7 @@ with st.expander("Detailed readings", expanded=False):
     )
 snapshot = {"fetched_at": st.session_state.get("fetched_at"), "issued": st.session_state.get("issued"),
             "errors": errors, "records": records}
-c2.download_button("Download complete snapshot (JSON)", json.dumps(snapshot, indent=2),
+st.download_button("Download complete snapshot (JSON)", json.dumps(snapshot, indent=2),
                    file_name="bom_rainfall_snapshot.json", mime="application/json", use_container_width=True)
 
 with st.expander("Data notes"):
