@@ -75,25 +75,102 @@ def latest_table(df):
         "Ipswich",
     ]
 
-    latest = (
-        df.sort_values("period_end")
+    # Latest completed 3-hour rainfall total.
+    latest_3h = (
+        df[df["series"] == "3h"]
+        .sort_values("period_end")
         .groupby(
-            ["station_id", "station", "series"],
+            ["station_id", "station"],
             observed=True,
             as_index=False,
         )
         .tail(1)
+        [
+            [
+                "station_id",
+                "station",
+                "rainfall_mm",
+            ]
+        ]
+        .rename(
+            columns={
+                "rainfall_mm": "Past 3 hours (mm)",
+            }
+        )
     )
 
-    table = latest.pivot(
-        index=["station_id", "station"],
-        columns="series",
-        values="rainfall_mm",
+    # All completed 24-hour totals.
+    daily = (
+        df[df["series"] == "24h"]
+        .sort_values("period_end")
+        .copy()
     )
 
-    table = table.reindex(
-        columns=["1h", "3h", "24h", "since_9am"]
-    ).reset_index()
+    # Latest completed 24-hour total.
+    latest_24h = (
+        daily
+        .groupby(
+            ["station_id", "station"],
+            observed=True,
+            as_index=False,
+        )
+        .tail(1)
+        [
+            [
+                "station_id",
+                "station",
+                "rainfall_mm",
+            ]
+        ]
+        .rename(
+            columns={
+                "rainfall_mm": "Past 24 hours (mm)",
+            }
+        )
+    )
+
+    # Sum the latest three completed 24-hour totals.
+    past_3_days = (
+        daily
+        .groupby(
+            ["station_id", "station"],
+            observed=True,
+            group_keys=False,
+        )
+        .tail(3)
+        .groupby(
+            ["station_id", "station"],
+            observed=True,
+            as_index=False,
+        )
+        .agg(
+            **{
+                "Past 3 days (mm)": (
+                    "rainfall_mm",
+                    lambda values: (
+                        values.sum(min_count=3)
+                        if values.notna().sum() == 3
+                        else None
+                    ),
+                )
+            }
+        )
+    )
+
+    # Combine the three rainfall periods.
+    table = (
+        latest_3h
+        .merge(
+            latest_24h,
+            on=["station_id", "station"],
+            how="outer",
+        )
+        .merge(
+            past_3_days,
+            on=["station_id", "station"],
+            how="outer",
+        )
+    )
 
     # Apply the required location order.
     table["station"] = pd.Categorical(
@@ -103,19 +180,16 @@ def latest_table(df):
     )
 
     table = (
-        table.sort_values("station")
+        table
+        .sort_values("station")
         .reset_index(drop=True)
     )
 
-    table.columns.name = None
-
-    return table.rename(columns={
-        "station_id": "Station number",
-        "station": "Location",
-        "1h": "Latest 1 h (mm)",
-        "3h": "Latest 3 h (mm)",
-        "24h": "24 h to 9 am (mm)",
-        "since_9am": "Since 9 am (mm)",
+    # Rename the user-facing identification columns.
+    return table.rename(
+        columns={
+            "station_id": "Station number",
+            "station": "Location",
     })
 
 def csv_bytes(df):
