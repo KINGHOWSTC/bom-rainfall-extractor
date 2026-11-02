@@ -457,19 +457,39 @@ st.divider()
 st.header("Current River Levels")
 st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
 
-river_refresh = st.button("Retrieve current river levels", key="river_level_refresh")
+river_refresh = st.button(
+    "Retrieve current river levels",
+    key="river_level_refresh",
+)
 
-if river_refresh or "river_level_records" not in st.session_state:
+if (
+    river_refresh
+    or "river_level_records"
+    not in st.session_state
+):
     try:
         river_records, river_issued, river_source = (
-        river.collect_river_levels()
+            river.collect_river_levels()
         )
-        st.session_state.river_level_records = river_records
-        st.session_state.river_level_issued = river_issued
-        st.session_state.river_level_source = river_source
+
+        st.session_state.river_level_records = (
+            river_records
+        )
+
+        st.session_state.river_level_issued = (
+            river_issued
+        )
+
+        st.session_state.river_level_source = (
+            river_source
+        )
+
         st.session_state.river_level_error = None
+
     except Exception as exc:
-        st.session_state.river_level_error = str(exc)
+        st.session_state.river_level_error = (
+            str(exc)
+        )
 
 if st.session_state.get("river_level_error"):
     st.warning(st.session_state.river_level_error)
