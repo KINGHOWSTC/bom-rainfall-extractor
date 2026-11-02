@@ -243,29 +243,78 @@ st.caption("A blank cell means no observation was reported for that gauge and pe
 
 # import forecast_backend as forecast
 
+st.subheader("Rainfall Forecasts")
+
 st.caption(
-    "Cumulative Elders Weather Rain Amount forecasts: "
-    "1 Day includes Today + Tomorrow; "
-    "3 Day includes Today through +3 days; "
-    "5 Day includes Today through +5 days."
+    "Cumulative Rain Amount forecasts from Elders Weather. "
+    "The 1 Day Forecast includes Today and Tomorrow. "
+    "The 3 Day Forecast includes Today through three days ahead. "
+    "The 5 Day Forecast includes Today through five days ahead."
 )
 
-forecast_refresh = st.button("Refresh rainfall forecast", key="forecast_refresh")
-if forecast_refresh or "forecast_rows" not in st.session_state:
-    with st.spinner("Retrieving rainfall forecasts..."):
-        forecast_rows, forecast_errors = forecast.collect_forecasts()
+forecast_refresh = st.button(
+    "Refresh rainfall forecasts",
+    key="forecast_refresh",
+)
+
+if (
+    forecast_refresh
+    or "forecast_rows" not in st.session_state
+):
+    with st.spinner(
+        "Retrieving rainfall forecasts..."
+    ):
+        forecast_rows, forecast_errors = (
+            forecast.collect_forecasts()
+        )
+
     st.session_state.forecast_rows = forecast_rows
     st.session_state.forecast_errors = forecast_errors
 
-forecast_rows = st.session_state.get("forecast_rows", [])
-forecast_errors = st.session_state.get("forecast_errors", [])
+forecast_rows = st.session_state.get(
+    "forecast_rows",
+    [],
+)
+
+forecast_errors = st.session_state.get(
+    "forecast_errors",
+    [],
+)
+
 if forecast_errors:
-    with st.expander(f"Forecast retrieval warnings ({len(forecast_errors)})", expanded=False):
+    with st.expander(
+        f"Forecast retrieval warnings "
+        f"({len(forecast_errors)})",
+        expanded=False,
+    ):
         for forecast_error in forecast_errors:
             st.warning(forecast_error)
 
 if forecast_rows:
-    forecast_df = pd.DataFrame(forecast_rows)
+    forecast_df = pd.DataFrame(
+        forecast_rows
+    )
+
+    forecast_location_order = [
+        "Moogerah",
+        "Warrill View",
+        "Mount Walker",
+        "Rosewood",
+        "Lyons",
+        "Ipswich",
+    ]
+
+    forecast_df["Location"] = pd.Categorical(
+        forecast_df["Location"],
+        categories=forecast_location_order,
+        ordered=True,
+    )
+
+    forecast_df = (
+        forecast_df
+        .sort_values("Location")
+        .reset_index(drop=True)
+    )
 
     st.dataframe(
         forecast_df,
@@ -274,9 +323,10 @@ if forecast_rows:
     )
 
     st.caption(
-        "Forecast ranges are cumulative. Lower bounds and upper "
-        "bounds are summed separately. A blank means retrieval "
-        "failed for that location."
+        "Forecast values are cumulative rainfall ranges. "
+        "The lower bounds and upper bounds of each daily "
+        "forecast are summed separately. A blank means the "
+        "forecast could not be retrieved for that location."
     )
 
 with st.expander("Detailed readings", expanded=False):
