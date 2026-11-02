@@ -23,8 +23,11 @@ import difflib
 import re
 import sys
 import time
+
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from ftplib import FTP, all_errors
+from io import BytesIO
 
 import requests
 from bs4 import BeautifulSoup
@@ -32,6 +35,9 @@ from bs4 import BeautifulSoup
 # --------------------------------------------------------------------------- #
 # CONFIG - edit this section
 # --------------------------------------------------------------------------- #
+FTP_HOST = "ftp.bom.gov.au"
+FTP_DIRECTORY = "/anon/gen/fwo"
+FTP_TIMEOUT = 20
 BASE_URL = "https://www.bom.gov.au/cgi-bin/wrap_fwo.pl?{product}.html"
 BULLETINS = {
     "1h":  {"product": "IDQ60336", "hours": 1},
@@ -112,25 +118,189 @@ def norm(name):
 
 
 # ----------------------------- fetching ------------------------------------ #
-def fetch_html(product):
-    url = BASE_URL.format(product=product)
-    last = None
-    for attempt in range(3):
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=30)
-            if resp.status_code == 403:
-                raise BulletinError(
-                    f"{product}: HTTP 403 - BoM's bot protection blocked the request. Save the page from your "
-                    "browser and use --html-dir, or fetch it with a headless browser.")
-            resp.raise_for_status()
-            return resp.text
-        except BulletinError:
-            raise
-        except requests.RequestException as exc:
-            last = exc
-            time.sleep(2 ** attempt)
-    raise BulletinError(f"{product}: could not fetch ({type(last).__name__}: {str(last)[:120]})")
+def fetch_html_from_ftp(product):
+    """
+    Retrieve the latest BoM FWO product using anonymous FTP.
+    """
 
+    filename = f"{product}.html"
+    buffer = BytesIO()
+
+    try:
+        with FTP(
+            host=FTP_HOST,
+            timeout=FTP_TIMEOUT,
+        ) as ftp:
+            # Anonymous login.
+            ftp.login()
+
+            # BoM forecast, warning and observation products.
+            ftp.cwd(FTP_DIRECTORY)
+
+            # Passive mode is normally more compatible with
+            # cloud services, NAT and corporate firewalls.
+            ftp.set_pasv(True)
+
+            ftp.retrbinary(
+                f"RETR {filename}",
+                buffer.write,
+            )
+
+    except all_errors as exc:
+        raise BulletinError(
+            f"FTP retrieval failed for {filename}: {exc}"
+        ) from exc
+
+    raw = buffer.getvalue()
+
+    if not raw:
+        raise BulletinError(
+            f"FTP returned an empty file for {filename}."
+        )
+
+    try:
+        html = raw.decode("utf-8")
+
+    except UnicodeDecodeError:
+        html = raw.decode(
+            "windows-1252",
+            errors="replace",
+        )
+
+    if product not in html:
+        raise BulletinError(
+            f"FTP file {filename} did not contain the "
+            f"expected product identifier {product}."
+        )
+
+    return html
+
+def fetch_html_from_https(product):
+    """
+    Retrieve the BoM product through the existing HTTPS page.
+    Used when FTP is unavailable.
+    """
+
+    url = (
+        "https://www.bom.gov.au/cgi-bin/"
+        f"wrap_fwo.pl?{product}.html"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=30,
+        )
+
+    except requests.RequestException as exc:
+        raise BulletinError(
+            f"HTTPS request failed for {product}: {exc}"
+        ) from exc
+
+    if response.status_code == 403:
+        raise BulletinError(
+            f"BoM blocked the HTTPS request for "
+            f"{product} with HTTP 403."
+        )
+
+    try:
+        response.raise_for_status()
+
+    except requests.RequestException as exc:
+        raise BulletinError(
+            f"HTTPS request failed for {product}: {exc}"
+        ) from exc
+
+    html = response.text
+
+    if product not in html:
+        raise BulletinError(
+            f"HTTPS response did not contain the "
+            f"expected product identifier {product}."
+        )
+
+    return html
+
+def fetch_html(product):
+    """
+    Retrieve the latest BoM product.
+
+    Retrieval order:
+    1. BoM anonymous FTP
+    2. BoM HTTPS fallback
+    """
+
+    ftp_error = None
+
+    try:
+        html = fetch_html_from_ftp(product)
+
+        return html
+
+    except BulletinError as exc:
+        ftp_error = str(exc)
+
+        warn(
+            f"{product}: FTP unavailable. "
+            f"Trying HTTPS. Details: {ftp_error}"
+        )
+
+    try:
+        return fetch_html_from_https(product)
+
+    except BulletinError as https_error:
+        raise BulletinError(
+            f"{product}: both retrieval methods failed. "
+            f"FTP error: {ftp_error}. "
+            f"HTTPS error: {https_error}"
+        ) from https_error
+
+# ---Temporary FTP TEST---
+def test_ftp_connection():
+    """
+    Test access to BoM anonymous FTP and list the rainfall products.
+    """
+
+    required_products = [
+        "IDQ60336.html",
+        "IDQ60348.html",
+        "IDQ60360.html",
+    ]
+
+    result = {
+        "host": FTP_HOST,
+        "directory": FTP_DIRECTORY,
+        "connected": False,
+        "files": [],
+        "missing": [],
+    }
+
+    with FTP(
+        host=FTP_HOST,
+        timeout=FTP_TIMEOUT,
+    ) as ftp:
+        ftp.login()
+        ftp.cwd(FTP_DIRECTORY)
+        ftp.set_pasv(True)
+
+        available_files = set(ftp.nlst())
+
+    result["connected"] = True
+
+    result["files"] = [
+        filename
+        for filename in required_products
+        if filename in available_files
+    ]
+
+    result["missing"] = [
+        filename
+        for filename in required_products
+        if filename not in available_files
+    ]
+
+    return result
 
 # ----------------------------- parsing ------------------------------------- #
 def parse_issued(soup):
