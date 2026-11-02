@@ -1,29 +1,13 @@
 # Rainfall Data Extractor
 
 A Streamlit interface for selected Bureau of Meteorology flood-warning gauges.
+IMPORTANT: ONLY CONFIGURED FOR SELECTED FEW STATIONS AND DATA SET. NOT FOR GENERAL APPLICATION.
 
 ## Files
 
 - `streamlit_app.py`: web interface and CSV/JSON downloads
 - `rainfall_backend.py`: retrieval, parsing and station matching
 - `requirements.txt`: Python packages installed by Streamlit Community Cloud
-
-## Deploy on Streamlit Community Cloud
-
-1. Create a new GitHub repository.
-2. Upload all three files listed above to the repository root.
-3. Sign into https://share.streamlit.io using GitHub.
-4. Select **Create app**.
-5. Choose the repository and `main` branch.
-6. Set the main file path to `streamlit_app.py`.
-7. Select **Deploy**.
-
-## Local testing (optional)
-
-```bash
-python -m pip install -r requirements.txt
-python -m streamlit run streamlit_app.py
-```
 
 ## If live BoM retrieval is blocked
 
