@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -235,7 +236,9 @@ def parse_forecast(
     expected_location: str,
     today: date | None = None,
 ) -> dict:
-    today = today or date.today()
+    today = today or datetime.now(
+        ZoneInfo("Australia/Brisbane")
+    ).date()
 
     soup = BeautifulSoup(html, "lxml")
 
