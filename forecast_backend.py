@@ -23,6 +23,7 @@ HEADERS = {
     "Accept-Language": "en-AU,en;q=0.9",
 }
 RAIN_RE = re.compile(r"^(?:\d+(?:\.\d+)?\s*(?:-|–|to)\s*)?\d+(?:\.\d+)?\s*mm$", re.I)
+NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 
 class ForecastError(RuntimeError):
     pass
@@ -55,6 +56,37 @@ def _parse_header_date(text: str, today: date) -> date | None:
     elif parsed > today + timedelta(days=180):
         parsed = parsed.replace(year=today.year - 1)
     return parsed
+
+def _rain_range(value: str) -> tuple[float, float]:
+    """Convert a published amount such as '2 - 5 mm' or '4 mm' to bounds."""
+    numbers = [float(x) for x in NUMBER_RE.findall(value)]
+    if len(numbers) == 1:
+        return numbers[0], numbers[0]
+    if len(numbers) == 2:
+        return numbers[0], numbers[1]
+    raise ForecastError(f"Could not interpret Rain Amount value '{value}'.")
+
+
+def _format_mm(value: float) -> str:
+    formatted = f"{value:.2f}".rstrip("0").rstrip(".")
+    return formatted
+
+
+def cumulative_rain_amount(amounts: list[str], final_offset: int) -> str:
+    """Sum forecast ranges from Today (offset 0) through final_offset inclusive."""
+    required = amounts[:final_offset + 1]
+    if len(required) != final_offset + 1 or any(not value for value in required):
+        raise ForecastError(
+            f"Cannot calculate cumulative forecast through day {final_offset}: "
+            "one or more daily Rain Amount values are missing."
+        )
+    bounds = [_rain_range(value) for value in required]
+    low = sum(item[0] for item in bounds)
+    high = sum(item[1] for item in bounds)
+    if low == high:
+        return f"{_format_mm(low)} mm"
+    return f"{_format_mm(low)} - {_format_mm(high)} mm"
+
 
 def parse_forecast(html: str, expected_location: str, today: date | None = None) -> dict:
     today = today or date.today()
@@ -94,9 +126,13 @@ def parse_forecast(html: str, expected_location: str, today: date | None = None)
                 )
 
     return {
-        "1 Day Forecast": amounts[1],
-        "3 Day Forecast": amounts[3],
-        "5 Day Forecast": amounts[5],
+        # User-defined cumulative windows, inclusive of Today:
+        # 1 day = Today + Tomorrow (offsets 0..1)
+        # 3 day = Today through Today + 3 (offsets 0..3)
+        # 5 day = Today through Today + 5 (offsets 0..5)
+        "1 Day Forecast": cumulative_rain_amount(amounts, 1),
+        "3 Day Forecast": cumulative_rain_amount(amounts, 3),
+        "5 Day Forecast": cumulative_rain_amount(amounts, 5),
     }
 
 def collect_forecasts(html_by_slug: dict[str, str] | None = None):
