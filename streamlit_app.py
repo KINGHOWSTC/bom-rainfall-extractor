@@ -71,7 +71,7 @@ def latest_table(df):
     table = table.reindex(columns=["1h", "3h", "24h", "since_9am"]).reset_index()
     table.columns.name = None
     return table.rename(columns={
-        "station_id": "Station number", "station": "Station",
+        "station_id": "Station number", "station": "Location",
         "1h": "Latest 1 h (mm)", "3h": "Latest 3 h (mm)",
         "24h": "24 h to 9 am (mm)", "since_9am": "Since 9 am (mm)",
     })
@@ -125,21 +125,74 @@ st.dataframe(latest_table(df), hide_index=True, use_container_width=True,
                             ["Latest 1 h (mm)", "Latest 3 h (mm)", "24 h to 9 am (mm)", "Since 9 am (mm)"]})
 st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
 
-st.subheader("Detailed readings")
-left, right = st.columns(2)
-selected_stations = left.multiselect("Stations", STATION_ORDER, default=STATION_ORDER)
-selected_periods = right.multiselect("Rainfall periods", list(SERIES_LABELS), default=list(SERIES_LABELS),
-                                     format_func=lambda x: SERIES_LABELS[x])
-filtered = df[df["station"].isin(selected_stations) & df["series"].isin(selected_periods)].copy()
-display = filtered[["station_id", "station", "bom_station", "period", "period_start", "period_end", "rainfall_mm", "issued"]]
-display.columns = ["Station number", "Station", "BoM station", "Period", "Period start (AEST)",
-                   "Period end (AEST)", "Rainfall (mm)", "Bulletin issued (AEST)"]
-st.dataframe(display, hide_index=True, use_container_width=True,
-             column_config={"Rainfall (mm)": st.column_config.NumberColumn(format="%.1f")})
+with st.expander("Detailed readings", expanded=False):
+    st.caption(
+        "Verification data showing the exact BoM station row and "
+        "individual observation periods used by the app."
+    )
 
-c1, c2 = st.columns(2)
-c1.download_button("Download filtered readings (CSV)", csv_bytes(display),
-                   file_name="bom_rainfall_readings.csv", mime="text/csv", use_container_width=True)
+    left, right = st.columns(2)
+
+    selected_stations = left.multiselect(
+        "Stations",
+        STATION_ORDER,
+        default=STATION_ORDER,
+    )
+
+    selected_periods = right.multiselect(
+        "Rainfall periods",
+        list(SERIES_LABELS),
+        default=list(SERIES_LABELS),
+        format_func=lambda x: SERIES_LABELS[x],
+    )
+
+    filtered = df[
+        df["station"].isin(selected_stations)
+        & df["series"].isin(selected_periods)
+    ].copy()
+
+    display = filtered[
+        [
+            "station_id",
+            "station",
+            "bom_station",
+            "period",
+            "period_start",
+            "period_end",
+            "rainfall_mm",
+            "issued",
+        ]
+    ]
+
+    display.columns = [
+        "Station number",
+        "Station",
+        "BoM source station",
+        "Period",
+        "Period start (AEST)",
+        "Period end (AEST)",
+        "Rainfall (mm)",
+        "Bulletin issued (AEST)",
+    ]
+
+    st.dataframe(
+        display,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Rainfall (mm)": st.column_config.NumberColumn(
+                format="%.1f"
+            )
+        },
+    )
+
+    st.download_button(
+        "Download filtered readings (CSV)",
+        csv_bytes(display),
+        file_name="bom_rainfall_readings.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 snapshot = {"fetched_at": st.session_state.get("fetched_at"), "issued": st.session_state.get("issued"),
             "errors": errors, "records": records}
 c2.download_button("Download complete snapshot (JSON)", json.dumps(snapshot, indent=2),
