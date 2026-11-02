@@ -243,8 +243,12 @@ st.caption("A blank cell means no observation was reported for that gauge and pe
 
 # import forecast_backend as forecast
 
-st.subheader("Rainfall Forecast")
-st.caption("Elders Weather Rain Amount forecasts for 1, 3 and 5 days ahead.")
+st.caption(
+    "Cumulative Elders Weather Rain Amount forecasts: "
+    "1 Day includes Today + Tomorrow; "
+    "3 Day includes Today through +3 days; "
+    "5 Day includes Today through +5 days."
+)
 
 forecast_refresh = st.button("Refresh rainfall forecast", key="forecast_refresh")
 if forecast_refresh or "forecast_rows" not in st.session_state:
@@ -262,8 +266,18 @@ if forecast_errors:
 
 if forecast_rows:
     forecast_df = pd.DataFrame(forecast_rows)
-    st.dataframe(forecast_df, hide_index=True, width="stretch")
-    st.caption("Forecast ranges are reproduced as published. A blank means that forecast retrieval failed for that location.")
+
+    st.dataframe(
+        forecast_df,
+        hide_index=True,
+        width="stretch",
+    )
+
+    st.caption(
+        "Forecast ranges are cumulative. Lower bounds and upper "
+        "bounds are summed separately. A blank means retrieval "
+        "failed for that location."
+    )
 
 with st.expander("Detailed readings", expanded=False):
     st.caption(
