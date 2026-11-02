@@ -123,7 +123,7 @@ def latest_table(df):
         df[df["series"] == "24h"]
         .sort_values("period_end")
         .copy()
-
+    )
 def retrieve():
     records, issued, errors = rb.collect()
 
