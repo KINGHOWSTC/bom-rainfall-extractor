@@ -1,7 +1,5 @@
 """Streamlit front end for selected BoM rainfall gauges."""
 from datetime import datetime
-import csv
-import io
 import json
 import pandas as pd
 import streamlit as st
@@ -19,37 +17,6 @@ SERIES_LABELS = {
 }
 STATION_ORDER = [s["label"] for s in rb.STATIONS]
 
-def read_uploads(files):
-    """Return product-keyed HTML from files named 1h, 3h and 24h."""
-    result = {}
-    for file in files or []:
-        name = file.name.lower()
-        key = next((k for k in rb.BULLETINS if k in name), None)
-        if key:
-            result[key] = file.getvalue().decode("utf-8", errors="replace")
-    return result
-
-def collect_uploaded(uploaded):
-    records, issued, errors = [], {}, []
-    for key in rb.BULLETINS:
-        if key not in uploaded:
-            errors.append(f"{key}: no uploaded file found; include '{key}' in its filename")
-            continue
-        try:
-            issue_time, rows = rb.parse_bulletin(uploaded[key], key)
-            issued[key] = issue_time.isoformat()
-            records.extend(rb.station_records(rows, issue_time, key))
-        except rb.BulletinError as exc:
-            errors.append(f"{key}: {exc}")
-    return records, issued, errors
-
-def retrieve(uploaded_files):
-    uploaded = read_uploads(uploaded_files)
-    if uploaded:
-        return (*collect_uploaded(uploaded), "Uploaded HTML")
-    records, issued, errors = rb.collect()
-    return records, issued, errors, "Live BoM bulletins"
-
 def dataframe(records):
     if not records:
         return pd.DataFrame()
@@ -64,7 +31,7 @@ def dataframe(records):
 
 def latest_table(df):
     if df.empty:
-        return df
+        return pd.DataFrame()
 
     location_order = [
         "Moogerah",
@@ -75,17 +42,27 @@ def latest_table(df):
         "Ipswich",
     ]
 
-    # Latest completed 3-hour rainfall total.
-    latest_3h = (
+    group_columns = [
+        "station_id",
+        "station",
+    ]
+
+    # All completed 3-hour rainfall periods.
+    three_hour_data = (
         df[df["series"] == "3h"]
         .sort_values("period_end")
+        .copy()
+    )
+
+    # Latest completed 3-hour rainfall period.
+    past_3_hours = (
+        three_hour_data
         .groupby(
-            ["station_id", "station"],
+            group_columns,
             observed=True,
-            as_index=False,
+            group_keys=False,
         )
-        .tail(1)
-        [
+        .tail(1)[
             [
                 "station_id",
                 "station",
@@ -99,23 +76,53 @@ def latest_table(df):
         )
     )
 
-    # All completed 24-hour totals.
-    daily = (
+    # Sum the latest two completed 3-hour rainfall periods.
+    past_6_hours = (
+        three_hour_data
+        .groupby(
+            group_columns,
+            observed=True,
+            group_keys=False,
+        )
+        .tail(2)
+        .groupby(
+            group_columns,
+            observed=True,
+            as_index=False,
+        )
+        .agg(
+            **{
+                "Past 6 hours (mm)": (
+                    "rainfall_mm",
+                    lambda values: (
+                        values.sum()
+                        if (
+                            len(values) == 2
+                            and values.notna().sum() == 2
+                        )
+                        else None
+                    ),
+                )
+            }
+        )
+    )
+
+    # All completed 24-hour rainfall periods.
+    daily_data = (
         df[df["series"] == "24h"]
         .sort_values("period_end")
         .copy()
     )
 
-    # Latest completed 24-hour total.
-    latest_24h = (
-        daily
+    # Latest completed 24-hour rainfall period.
+    past_1_day = (
+        daily_data
         .groupby(
-            ["station_id", "station"],
+            group_columns,
             observed=True,
-            as_index=False,
+            group_keys=False,
         )
-        .tail(1)
-        [
+        .tail(1)[
             [
                 "station_id",
                 "station",
@@ -124,32 +131,35 @@ def latest_table(df):
         ]
         .rename(
             columns={
-                "rainfall_mm": "Past 24 hours (mm)",
+                "rainfall_mm": "Past 1 day (mm)",
             }
         )
     )
 
-    # Sum the latest three completed 24-hour totals.
-    past_3_days = (
-        daily
+    # Sum the latest two completed 24-hour rainfall periods.
+    past_2_days = (
+        daily_data
         .groupby(
-            ["station_id", "station"],
+            group_columns,
             observed=True,
             group_keys=False,
         )
-        .tail(3)
+        .tail(2)
         .groupby(
-            ["station_id", "station"],
+            group_columns,
             observed=True,
             as_index=False,
         )
         .agg(
             **{
-                "Past 3 days (mm)": (
+                "Past 2 days (mm)": (
                     "rainfall_mm",
                     lambda values: (
-                        values.sum(min_count=3)
-                        if values.notna().sum() == 3
+                        values.sum()
+                        if (
+                            len(values) == 2
+                            and values.notna().sum() == 2
+                        )
                         else None
                     ),
                 )
@@ -157,22 +167,42 @@ def latest_table(df):
         )
     )
 
-    # Combine the three rainfall periods.
+    # Create the station framework first so all configured
+    # locations remain visible even if a period is missing.
+    table = pd.DataFrame(
+        [
+            {
+                "station_id": station["id"],
+                "station": station["label"],
+            }
+            for station in rb.STATIONS
+        ]
+    )
+
     table = (
-        latest_3h
+        table
         .merge(
-            latest_24h,
-            on=["station_id", "station"],
-            how="outer",
+            past_3_hours,
+            on=group_columns,
+            how="left",
         )
         .merge(
-            past_3_days,
-            on=["station_id", "station"],
-            how="outer",
+            past_6_hours,
+            on=group_columns,
+            how="left",
+        )
+        .merge(
+            past_1_day,
+            on=group_columns,
+            how="left",
+        )
+        .merge(
+            past_2_days,
+            on=group_columns,
+            how="left",
         )
     )
 
-    # Apply the required location order.
     table["station"] = pd.Categorical(
         table["station"],
         categories=location_order,
@@ -185,12 +215,84 @@ def latest_table(df):
         .reset_index(drop=True)
     )
 
-    # Rename the user-facing identification columns.
     return table.rename(
         columns={
             "station_id": "Station number",
             "station": "Location",
-    })
+        }
+    )
+
+def rainfall_source_label():
+    """
+    Summarise which retrieval method supplied the rainfall products.
+    """
+
+    methods_by_product = getattr(
+        rb,
+        "LAST_RETRIEVAL_METHOD",
+        {},
+    )
+
+    expected_products = [
+        bulletin["product"]
+        for bulletin in rb.BULLETINS.values()
+    ]
+
+    methods = [
+        methods_by_product.get(product)
+        for product in expected_products
+    ]
+
+    methods = [
+        method
+        for method in methods
+        if method
+    ]
+
+    if not methods:
+        return "BoM rainfall source unknown"
+
+    if all(
+        "FTP" in method
+        for method in methods
+    ):
+        return "BoM anonymous FTP"
+
+    if all(
+        "HTTPS" in method
+        for method in methods
+    ):
+        return "BoM HTTPS HTML fallback"
+
+    if any(
+        "FTP" in method
+        for method in methods
+    ) and any(
+        "HTTPS" in method
+        for method in methods
+    ):
+        return "Mixed: BoM FTP and HTTPS fallback"
+
+    return "BoM rainfall retrieval"
+
+def retrieve():
+    # Clear the previous run's method information.
+    if hasattr(
+        rb,
+        "LAST_RETRIEVAL_METHOD",
+    ):
+        rb.LAST_RETRIEVAL_METHOD.clear()
+
+    records, issued, errors = rb.collect()
+
+    source = rainfall_source_label()
+
+    return (
+        records,
+        issued,
+        errors,
+        source,
+    )
 
 def csv_bytes(df):
     export = df.copy()
@@ -201,21 +303,72 @@ def csv_bytes(df):
 st.title("Rainfall Data Extractor")
 st.caption("Selected BoM flood-warning gauges: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
-with st.sidebar:
-    st.header("Retrieve data")
-    uploads = st.file_uploader(
-        "Optional saved bulletin pages",
-        type=["html", "htm"], accept_multiple_files=True,
-        help="Only use this if live retrieval is blocked. Name the files 1h.html, 3h.html and 24h.html.",
+st.markdown(
+    """
+    <style>
+    .st-key-floating-rainfall-refresh {
+        position: fixed;
+        top: 4.5rem;
+        right: 1.25rem;
+        z-index: 999999;
+        width: auto;
+        padding: 0.35rem;
+        border-radius: 0.75rem;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(128, 128, 128, 0.35);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+    }
+
+    .st-key-floating-rainfall-refresh button {
+        white-space: nowrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .st-key-floating-rainfall-refresh {
+            background: rgba(30, 30, 30, 0.96);
+        }
+    }
+
+    @media (max-width: 600px) {
+        .st-key-floating-rainfall-refresh {
+            top: auto;
+            right: 0.75rem;
+            bottom: 1rem;
+            max-width: calc(100vw - 1.5rem);
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.container(
+    key="floating-rainfall-refresh",
+):
+    retrieve_clicked = st.button(
+        "Retrieve Latest Rainfall",
+        type="primary",
+        key="retrieve_latest_rainfall",
+        width="content",
     )
-    retrieve_clicked = st.button("Retrieve latest rainfall", type="primary", use_container_width=True)
-    st.caption("With no uploads, the app requests the three live BoM bulletins. Uploaded pages override live retrieval.")
+
 
 if retrieve_clicked or "records" not in st.session_state:
-    with st.spinner("Retrieving and checking rainfall data..."):
-        records, issued, errors, source = retrieve(uploads)
-    st.session_state.update(records=records, issued=issued, errors=errors, source=source,
-                            fetched_at=datetime.now(rb.AEST).isoformat(timespec="seconds"))
+    with st.spinner(
+        "Retrieving and checking rainfall data..."
+    ):
+        records, issued, errors, source = retrieve()
+
+    st.session_state.update(
+        records=records,
+        issued=issued,
+        errors=errors,
+        source=source,
+        fetched_at=datetime.now(
+            rb.AEST
+        ).isoformat(timespec="seconds"),
+    )
 
 records = st.session_state.get("records", [])
 errors = st.session_state.get("errors", [])
@@ -227,21 +380,19 @@ if errors:
             st.warning(error)
 
 if df.empty:
-    st.error("No rainfall readings were retrieved. BoM may have blocked the request, or its page layout may have changed.")
-    st.info("Fallback: save the three BoM pages as 1h.html, 3h.html and 24h.html, upload them in the sidebar, then click Retrieve latest rainfall.")
+    st.error(
+        "No rainfall readings were retrieved. "
+        "The BoM connection may be temporarily unavailable."
+    )
+
+    st.info(
+        "Try Retrieve Latest Rainfall again. If the issue continues, "
+        "review Technical Tools at the bottom of the page."
+    )
+
     st.stop()
 
-meta1, meta2 = st.columns(2)
-meta1.metric("Data source", st.session_state.get("source", "Unknown"))
-meta2.metric("Retrieved", st.session_state.get("fetched_at", "Unknown").replace("T", " "))
 
-st.subheader("Latest rainfall totals")
-st.dataframe(latest_table(df), hide_index=True, use_container_width=True,
-             column_config={c: st.column_config.NumberColumn(format="%.1f") for c in
-                            ["Latest 1 h (mm)", "Latest 3 h (mm)", "24 h to 9 am (mm)", "Since 9 am (mm)"]})
-st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
-
-# import forecast_backend as forecast
 
 st.subheader("Rainfall Forecasts")
 
@@ -328,111 +479,114 @@ if forecast_rows:
         "forecast are summed separately. A blank means the "
         "forecast could not be retrieved for that location."
     )
+st.divider()
 
-with st.expander("Detailed readings", expanded=False):
-    st.caption(
-        "Verification data showing the exact BoM station row and "
-        "individual observation periods used by the app."
+# =========================================================
+# Observed rainfall
+# =========================================================
+
+st.subheader("Rainfall Occurred")
+
+source_left, source_right = st.columns(2)
+
+source_left.metric(
+    "Data source",
+    st.session_state.get(
+        "source",
+        "Unknown",
+    ),
+)
+
+retrieved_value = st.session_state.get(
+    "fetched_at"
+)
+
+if retrieved_value:
+    retrieved_display = (
+        retrieved_value
+        .replace("T", " ")
+        .replace("+10:00", " AEST")
     )
+else:
+    retrieved_display = "Unknown"
 
-    left, right = st.columns(2)
+source_right.metric(
+    "Retrieved",
+    retrieved_display,
+)
 
-    selected_stations = left.multiselect(
-        "Stations",
-        STATION_ORDER,
-        default=STATION_ORDER,
-    )
-
-    selected_periods = right.multiselect(
-        "Rainfall periods",
-        list(SERIES_LABELS),
-        default=list(SERIES_LABELS),
-        format_func=lambda x: SERIES_LABELS[x],
-    )
-
-    filtered = df[
-        df["station"].isin(selected_stations)
-        & df["series"].isin(selected_periods)
-    ].copy()
-
-    display = filtered[
-        [
-            "station_id",
-            "station",
-            "bom_station",
-            "period",
-            "period_start",
-            "period_end",
-            "rainfall_mm",
-            "issued",
-        ]
-    ]
-
-    display.columns = [
-        "Station number",
-        "Station",
-        "BoM source station",
-        "Period",
-        "Period start (AEST)",
-        "Period end (AEST)",
-        "Rainfall (mm)",
-        "Bulletin issued (AEST)",
-    ]
-
-    st.dataframe(
-        display,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "Rainfall (mm)": st.column_config.NumberColumn(
+st.dataframe(
+    latest_table(df),
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Past 3 hours (mm)": (
+            st.column_config.NumberColumn(
                 format="%.1f"
             )
-        },
-    )
+        ),
+        "Past 6 hours (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
+        ),
+        "Past 1 day (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
+        ),
+        "Past 2 days (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
+        ),
+    },
+)
 
-    st.download_button(
-        "Download filtered readings (CSV)",
-        csv_bytes(display),
-        file_name="bom_rainfall_readings.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-snapshot = {"fetched_at": st.session_state.get("fetched_at"), "issued": st.session_state.get("issued"),
-            "errors": errors, "records": records}
-st.download_button("Download complete snapshot (JSON)", json.dumps(snapshot, indent=2),
-                   file_name="bom_rainfall_snapshot.json", mime="application/json", use_container_width=True)
-
-with st.expander("Data notes"):
-    st.write("This tool reports BoM bulletin values and does not independently quality-control the gauges.")
-    st.write("Station labels are matched to the exact BoM names configured in rainfall_backend.py. Verify the station-number mapping before operational use.")
-    if st.session_state.get("issued"):
-        st.json(st.session_state["issued"])
-
-# import river_level_backend as river
+st.caption(
+    "Past 6 hours is the sum of the latest two completed "
+    "3-hour rainfall periods. Past 2 days is the sum of the "
+    "latest two completed 24-hour rainfall periods. A blank "
+    "means one or more required observations were unavailable."
+)
 
 st.divider()
+
 st.header("Current River Levels")
-st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
 
-river_upload = st.file_uploader(
-    "Optional saved IDQ60286 river-height page",
-    type=["html", "htm", "txt"],
-    key="river_level_upload",
-    help="Only needed if BoM blocks automatic retrieval.",
+river_refresh = st.button(
+    "Retrieve current river levels",
+    key="river_level_refresh",
 )
-river_refresh = st.button("Retrieve current river levels", key="river_level_refresh")
 
-if river_refresh or "river_level_records" not in st.session_state:
+if (
+    river_refresh
+    or "river_level_records"
+    not in st.session_state
+):
     try:
-        river_html = (river_upload.getvalue().decode("utf-8", errors="replace")
-                      if river_upload is not None else None)
-        river_records, river_issued, river_source = river.collect_river_levels(river_html)
-        st.session_state.river_level_records = river_records
-        st.session_state.river_level_issued = river_issued
-        st.session_state.river_level_source = river_source
+        river_records, river_issued, river_source = (
+            river.collect_river_levels()
+        )
+
+        st.session_state.river_level_records = (
+            river_records
+        )
+
+        st.session_state.river_level_issued = (
+            river_issued
+        )
+
+        st.session_state.river_level_source = (
+            river_source
+        )
+
         st.session_state.river_level_error = None
+
     except Exception as exc:
-        st.session_state.river_level_error = str(exc)
+        st.session_state.river_level_error = (
+            str(exc)
+        )
 
 if st.session_state.get("river_level_error"):
     st.warning(st.session_state.river_level_error)
@@ -447,7 +601,7 @@ if river_records:
     st.dataframe(
         river_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Current River Level (m)": st.column_config.NumberColumn(format="%.2f m"),
         },
@@ -459,4 +613,274 @@ if river_records:
         mime="text/csv",
         key="download_river_levels",
     )
-    st.caption("Current River Level is scraped from Height (m). Rising/Falling/Steady is scraped from Tendency.")
+    st.caption("Current River Level is adopted from Height (m). Rising/Falling/Steady is adopted from Tendency.")
+
+st.divider()
+
+with st.expander(
+    "Technical Tools",
+    expanded=False,
+):
+    st.caption(
+        "Detailed source readings, technical downloads, data notes "
+        "and connection diagnostics."
+    )
+
+    (
+        detailed_tab,
+        snapshot_tab,
+        notes_tab,
+        ftp_tab,
+    ) = st.tabs(
+        [
+            "Detailed readings",
+            "JSON snapshot",
+            "Data notes",
+            "BoM FTP test",
+        ]
+    )
+
+    # =========================================================
+    # Detailed rainfall readings
+    # =========================================================
+
+    with detailed_tab:
+        st.caption(
+            "Verification data showing the exact BoM source station "
+            "and individual observation periods used by the app."
+        )
+
+        filter_left, filter_right = st.columns(2)
+
+        selected_stations = filter_left.multiselect(
+            "Locations",
+            STATION_ORDER,
+            default=STATION_ORDER,
+            key="technical_locations",
+        )
+
+        selected_periods = filter_right.multiselect(
+            "Rainfall periods",
+            list(SERIES_LABELS),
+            default=list(SERIES_LABELS),
+            format_func=lambda value: SERIES_LABELS[value],
+            key="technical_rainfall_periods",
+        )
+
+        filtered = df[
+            df["station"].isin(selected_stations)
+            & df["series"].isin(selected_periods)
+        ].copy()
+
+        display = filtered[
+            [
+                "station_id",
+                "station",
+                "bom_station",
+                "period",
+                "period_start",
+                "period_end",
+                "rainfall_mm",
+                "issued",
+            ]
+        ].copy()
+
+        display.columns = [
+            "Station number",
+            "Location",
+            "BoM source station",
+            "Period",
+            "Period start (AEST)",
+            "Period end (AEST)",
+            "Rainfall (mm)",
+            "Bulletin issued (AEST)",
+        ]
+
+        st.dataframe(
+            display,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Rainfall (mm)": st.column_config.NumberColumn(
+                    format="%.1f"
+                ),
+            },
+        )
+
+        st.download_button(
+            "Download filtered readings (CSV)",
+            csv_bytes(display),
+            file_name="bom_rainfall_readings.csv",
+            mime="text/csv",
+            width="stretch",
+            key="download_detailed_rainfall",
+        )
+
+    # =========================================================
+    # Complete JSON snapshot
+    # =========================================================
+
+    with snapshot_tab:
+        st.caption(
+            "Download the complete rainfall retrieval result for "
+            "troubleshooting and verification."
+        )
+
+        snapshot = {
+            "fetched_at": st.session_state.get(
+                "fetched_at"
+            ),
+            "source": st.session_state.get(
+                "source"
+            ),
+            "issued": st.session_state.get(
+                "issued"
+            ),
+            "errors": errors,
+            "records": records,
+        }
+
+        st.download_button(
+            "Download complete snapshot (JSON)",
+            json.dumps(
+                snapshot,
+                indent=2,
+            ),
+            file_name="bom_rainfall_snapshot.json",
+            mime="application/json",
+            width="stretch",
+            key="download_complete_snapshot",
+        )
+
+        st.caption(
+            "The snapshot includes every retrieved rainfall record, "
+            "bulletin issue times, retrieval time and reported errors."
+        )
+
+    # =========================================================
+    # Data notes
+    # =========================================================
+
+    with notes_tab:
+        st.write(
+            "This tool reports operational BoM rainfall and "
+            "river-height observations. These observations may "
+            "have received only limited quality checking."
+        )
+
+        st.write(
+            "The Location column contains the application-friendly "
+            "location name. The BoM source station field contains "
+            "the exact source row matched by the rainfall scraper."
+        )
+
+        st.write(
+            "A blank rainfall or river-level value means no usable "
+            "observation was returned. It does not mean zero."
+        )
+
+        st.write(
+            "Past 6 hours is calculated from the required 3-hour "
+            "rainfall periods. Past 2 days is calculated from the "
+            "required completed 24-hour rainfall periods."
+        )
+
+        st.write(
+            "Rainfall forecast values are cumulative forecast ranges. "
+            "Lower and upper bounds are summed separately."
+        )
+
+        st.write(
+            "Kalbar river level is reported in metres AHD. Other "
+            "river gauges may be reported using Local Gauge Height, "
+            "so the values should not be compared without considering "
+            "their respective datums."
+        )
+
+        if st.session_state.get("issued"):
+            st.write("Rainfall bulletin issue times:")
+
+            st.json(
+                st.session_state["issued"]
+            )
+
+        if st.session_state.get("river_level_issued"):
+            st.write(
+                "River bulletin issued:"
+            )
+
+            st.code(
+                str(
+                    st.session_state[
+                        "river_level_issued"
+                    ]
+                )
+            )
+
+    # =========================================================
+    # BoM FTP connection test
+    # =========================================================
+
+    with ftp_tab:
+        st.caption(
+            "Checks whether the Streamlit server can access the "
+            "BoM anonymous FTP service and find the required "
+            "rainfall products."
+        )
+
+        if st.button(
+            "Test BoM FTP Connection",
+            key="test_bom_ftp",
+        ):
+            try:
+                with st.spinner(
+                    "Testing BoM FTP connection..."
+                ):
+                    ftp_result = (
+                        rb.test_ftp_connection()
+                    )
+
+                st.success(
+                    "Connected successfully to BoM FTP."
+                )
+
+                st.write(
+                    f"Host: {ftp_result['host']}"
+                )
+
+                st.write(
+                    "Directory: "
+                    f"{ftp_result['directory']}"
+                )
+
+                if ftp_result.get("files"):
+                    st.write(
+                        "Expected rainfall files found:"
+                    )
+
+                    for filename in ftp_result["files"]:
+                        st.code(filename)
+
+                if ftp_result.get("missing"):
+                    st.warning(
+                        "Expected rainfall files not found:"
+                    )
+
+                    for filename in ftp_result["missing"]:
+                        st.code(filename)
+
+                if not ftp_result.get("missing"):
+                    st.success(
+                        "All expected rainfall products were found."
+                    )
+
+            except Exception as exc:
+                st.error(
+                    f"BoM FTP connection failed: {exc}"
+                )
+
+                st.info(
+                    "If an HTTPS fallback is configured in "
+                    "rainfall_backend.py, the app can continue "
+                    "retrieving rainfall without FTP."
+                )
