@@ -496,51 +496,6 @@ if river_records:
     )
     st.caption("Current River Level is scraped from Height (m). Rising/Falling/Steady is scraped from Tendency.")
 
-        try:
-            with st.spinner(
-                "Testing BoM anonymous FTP..."
-            ):
-                ftp_result = rb.test_ftp_connection()
-
-            st.success(
-                "Connected successfully to BoM FTP."
-            )
-
-            st.write(
-                f"FTP host: {ftp_result['host']}"
-            )
-
-            st.write(
-                f"FTP directory: "
-                f"{ftp_result['directory']}"
-            )
-
-            if ftp_result["files"]:
-                st.write(
-                    "Rainfall files found:"
-                )
-
-                for filename in ftp_result["files"]:
-                    st.code(filename)
-
-            if ftp_result["missing"]:
-                st.warning(
-                    "These expected files were not found:"
-                )
-
-                for filename in ftp_result["missing"]:
-                    st.code(filename)
-
-        except Exception as exc:
-            st.error(
-                f"BoM FTP connection failed: {exc}"
-            )
-
-            st.info(
-                "The rainfall app will continue using "
-                "the HTTPS fallback."
-            )
-
 st.divider()
 
 with st.expander(
