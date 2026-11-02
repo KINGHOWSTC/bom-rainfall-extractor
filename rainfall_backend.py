@@ -44,21 +44,36 @@ BULLETINS = {
 # the one that actually has data wins. Names were matched to your IDs using BoM's
 # Queensland flood-warning gauge index - please sanity-check the notes below.
 STATIONS = [
-    # 540681 - ID not verified against the index; the bulletins carry "Moogerah Dam HG"
-    #          (data) and "Moogerah Dam" (blank in the 24h bulletin).
-    {"id": "540681", "label": "Moogerah",     "bom_names": ["Moogerah Dam HG", "Moogerah Dam"]},
-    # 540387 is "HARRISVILLE AL-B" in BoM's index, shown as "Harrisville" in the bulletins.
-    {"id": "540387", "label": "Warrill View", "bom_names": ["Harrisville"]},
-    # 540574 is "LOWER MT WALKER ALERT".
-    {"id": "540574", "label": "Mount Walker", "bom_names": ["Lower Mt Walker"]},
-    # 540503 - ID not verified; matched on the plain name "Rosewood" (not the
-    #          "Rosewood Detention Basin" / "Rosewood WWTP" gauges).
-    {"id": "540503", "label": "Rosewood",     "bom_names": ["Rosewood"]},
-    # 040793 is "LYONS ALERT" (your "40793" has lost its leading zero).
-    {"id": "040793", "label": "Lyons",        "bom_names": ["Lyons"]},
-    # 540250 is "BRASSALL(HANCOCKS BR) AL" in BoM's index. The bulletins ALSO have a
-    # separate gauge literally called "Ipswich" - swap the name below if you want that one.
-    {"id": "540250", "label": "Ipswich",      "bom_names": ["Brassall (Hancocks Bridge)"]},
+    {
+        "id": "040793",
+        "label": "Lyons",
+        "bom_names": ["Lyons"],
+    },
+    {
+        "id": "540250",
+        "label": "Ipswich",
+        "bom_names": ["Brassall (Hancocks Bridge)"],
+    },
+    {
+        "id": "540387",
+        "label": "Warrill View",
+        "bom_names": ["Harrisville"],
+    },
+    {
+        "id": "540503",
+        "label": "Rosewood",
+        "bom_names": ["Rosewood Detention Basin"],
+    },
+    {
+        "id": "540574",
+        "label": "Mount Walker",
+        "bom_names": ["Lower Mt Walker"],
+    },
+    {
+        "id": "040135",
+        "label": "Moogerah",
+        "bom_names": ["Moogerah Dam HG"],
+    },
 ]
 
 MIN_WATCH_MINUTES = 15   # be polite to BoM; the bulletins only update about hourly
