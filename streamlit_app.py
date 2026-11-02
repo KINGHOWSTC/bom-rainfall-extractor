@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 import rainfall_backend as rb
 import river_level_backend as river
+import forecast_backend as forecast
 
 st.set_page_config(page_title="Rainfall Data Extractor", page_icon="🌧️", layout="wide")
 
@@ -124,6 +125,30 @@ st.dataframe(latest_table(df), hide_index=True, use_container_width=True,
              column_config={c: st.column_config.NumberColumn(format="%.1f") for c in
                             ["Latest 1 h (mm)", "Latest 3 h (mm)", "24 h to 9 am (mm)", "Since 9 am (mm)"]})
 st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
+
+# import forecast_backend as forecast
+
+st.subheader("Rainfall Forecast")
+st.caption("Elders Weather Rain Amount forecasts for 1, 3 and 5 days ahead.")
+
+forecast_refresh = st.button("Refresh rainfall forecast", key="forecast_refresh")
+if forecast_refresh or "forecast_rows" not in st.session_state:
+    with st.spinner("Retrieving rainfall forecasts..."):
+        forecast_rows, forecast_errors = forecast.collect_forecasts()
+    st.session_state.forecast_rows = forecast_rows
+    st.session_state.forecast_errors = forecast_errors
+
+forecast_rows = st.session_state.get("forecast_rows", [])
+forecast_errors = st.session_state.get("forecast_errors", [])
+if forecast_errors:
+    with st.expander(f"Forecast retrieval warnings ({len(forecast_errors)})", expanded=False):
+        for forecast_error in forecast_errors:
+            st.warning(forecast_error)
+
+if forecast_rows:
+    forecast_df = pd.DataFrame(forecast_rows)
+    st.dataframe(forecast_df, hide_index=True, width="stretch")
+    st.caption("Forecast ranges are reproduced as published. A blank means that forecast retrieval failed for that location.")
 
 with st.expander("Detailed readings", expanded=False):
     st.caption(
