@@ -65,16 +65,57 @@ def dataframe(records):
 def latest_table(df):
     if df.empty:
         return df
-    latest = (df.sort_values("period_end")
-                .groupby(["station_id", "station", "series"], observed=True, as_index=False)
-                .tail(1))
-    table = latest.pivot(index=["station_id", "station"], columns="series", values="rainfall_mm")
-    table = table.reindex(columns=["1h", "3h", "24h", "since_9am"]).reset_index()
+
+    location_order = [
+        "Moogerah",
+        "Warrill View",
+        "Mount Walker",
+        "Rosewood",
+        "Lyons",
+        "Ipswich",
+    ]
+
+    latest = (
+        df.sort_values("period_end")
+        .groupby(
+            ["station_id", "station", "series"],
+            observed=True,
+            as_index=False,
+        )
+        .tail(1)
+    )
+
+    table = latest.pivot(
+        index=["station_id", "station"],
+        columns="series",
+        values="rainfall_mm",
+    )
+
+    table = table.reindex(
+        columns=["1h", "3h", "24h", "since_9am"]
+    ).reset_index()
+
+    # Apply the required location order.
+    table["station"] = pd.Categorical(
+        table["station"],
+        categories=location_order,
+        ordered=True,
+    )
+
+    table = (
+        table.sort_values("station")
+        .reset_index(drop=True)
+    )
+
     table.columns.name = None
+
     return table.rename(columns={
-        "station_id": "Station number", "station": "Location",
-        "1h": "Latest 1 h (mm)", "3h": "Latest 3 h (mm)",
-        "24h": "24 h to 9 am (mm)", "since_9am": "Since 9 am (mm)",
+        "station_id": "Station number",
+        "station": "Location",
+        "1h": "Latest 1 h (mm)",
+        "3h": "Latest 3 h (mm)",
+        "24h": "24 h to 9 am (mm)",
+        "since_9am": "Since 9 am (mm)",
     })
 
 def csv_bytes(df):
