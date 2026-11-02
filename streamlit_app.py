@@ -334,37 +334,6 @@ meta1, meta2 = st.columns(2)
 meta1.metric("Data source", st.session_state.get("source", "Unknown"))
 meta2.metric("Retrieved", st.session_state.get("fetched_at", "Unknown").replace("T", " "))
 
-st.subheader("Latest rainfall totals")
-
-st.dataframe(
-    latest_table(df),
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "Past 3 hours (mm)": st.column_config.NumberColumn(
-            format="%.1f"
-        ),
-        "Past 6 hours (mm)": st.column_config.NumberColumn(
-            format="%.1f"
-        ),
-        "Past 1 day (mm)": st.column_config.NumberColumn(
-            format="%.1f"
-        ),
-        "Past 2 days (mm)": st.column_config.NumberColumn(
-            format="%.1f"
-        ),
-    },
-)
-
-st.caption(
-    "Past 6 hours is the sum of the latest two completed "
-    "3-hour rainfall periods. Past 2 days is the sum of the "
-    "latest two completed 24-hour rainfall periods. A blank "
-    "means one or more required observations were unavailable."
-)
-
-st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
-
 st.subheader("Rainfall Forecasts")
 
 st.caption(
@@ -450,6 +419,39 @@ if forecast_rows:
         "forecast are summed separately. A blank means the "
         "forecast could not be retrieved for that location."
     )
+
+
+st.subheader("Rainfall - Occured")
+
+st.dataframe(
+    latest_table(df),
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Past 3 hours (mm)": st.column_config.NumberColumn(
+            format="%.1f"
+        ),
+        "Past 6 hours (mm)": st.column_config.NumberColumn(
+            format="%.1f"
+        ),
+        "Past 1 day (mm)": st.column_config.NumberColumn(
+            format="%.1f"
+        ),
+        "Past 2 days (mm)": st.column_config.NumberColumn(
+            format="%.1f"
+        ),
+    },
+)
+
+st.caption(
+    "Past 6 hours is the sum of the latest two completed "
+    "3-hour rainfall periods. Past 2 days is the sum of the "
+    "latest two completed 24-hour rainfall periods. A blank "
+    "means one or more required observations were unavailable."
+)
+
+st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
+
 
 st.divider()
 st.header("Current River Levels")
