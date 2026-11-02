@@ -553,7 +553,6 @@ st.caption(
 st.divider()
 
 st.header("Current River Levels")
-st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
 
 river_refresh = st.button(
     "Retrieve current river levels",
@@ -614,7 +613,7 @@ if river_records:
         mime="text/csv",
         key="download_river_levels",
     )
-    st.caption("Current River Level is scraped from Height (m). Rising/Falling/Steady is scraped from Tendency.")
+    st.caption("Current River Level is adopted from Height (m). Rising/Falling/Steady is adopted from Tendency.")
 
 st.divider()
 
