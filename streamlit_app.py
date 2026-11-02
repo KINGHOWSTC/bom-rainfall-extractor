@@ -6,6 +6,7 @@ import json
 import pandas as pd
 import streamlit as st
 import rainfall_backend as rb
+import river_level_backend as river
 
 st.set_page_config(page_title="Rainfall Data Extractor", page_icon="🌧️", layout="wide")
 
@@ -149,3 +150,56 @@ with st.expander("Data notes"):
     st.write("Station labels are matched to the exact BoM names configured in rainfall_backend.py. Verify the station-number mapping before operational use.")
     if st.session_state.get("issued"):
         st.json(st.session_state["issued"])
+
+# import river_level_backend as river
+
+st.divider()
+st.header("Current River Levels")
+st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
+
+river_upload = st.file_uploader(
+    "Optional saved IDQ60286 river-height page",
+    type=["html", "htm", "txt"],
+    key="river_level_upload",
+    help="Only needed if BoM blocks automatic retrieval.",
+)
+river_refresh = st.button("Retrieve current river levels", key="river_level_refresh")
+
+if river_refresh or "river_level_records" not in st.session_state:
+    try:
+        river_html = (river_upload.getvalue().decode("utf-8", errors="replace")
+                      if river_upload is not None else None)
+        river_records, river_issued, river_source = river.collect_river_levels(river_html)
+        st.session_state.river_level_records = river_records
+        st.session_state.river_level_issued = river_issued
+        st.session_state.river_level_source = river_source
+        st.session_state.river_level_error = None
+    except Exception as exc:
+        st.session_state.river_level_error = str(exc)
+
+if st.session_state.get("river_level_error"):
+    st.warning(st.session_state.river_level_error)
+
+river_records = st.session_state.get("river_level_records", [])
+if river_records:
+    river_df = pd.DataFrame(river_records)
+    info_left, info_right = st.columns(2)
+    info_left.metric("River data source", st.session_state.get("river_level_source", "Unknown"))
+    info_right.metric("River bulletin issued", st.session_state.get("river_level_issued") or "Unknown")
+
+    st.dataframe(
+        river_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Current River Level (m)": st.column_config.NumberColumn(format="%.2f m"),
+        },
+    )
+    st.download_button(
+        "Download river levels (CSV)",
+        river_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="bom_current_river_levels.csv",
+        mime="text/csv",
+        key="download_river_levels",
+    )
+    st.caption("Current River Level is scraped from Height (m). Rising/Falling/Steady is scraped from Tendency.")
