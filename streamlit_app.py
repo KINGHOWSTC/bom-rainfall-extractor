@@ -222,14 +222,76 @@ def latest_table(df):
         }
     )
 
+def rainfall_source_label():
+    """
+    Summarise which retrieval method supplied the rainfall products.
+    """
+
+    methods_by_product = getattr(
+        rb,
+        "LAST_RETRIEVAL_METHOD",
+        {},
+    )
+
+    expected_products = [
+        bulletin["product"]
+        for bulletin in rb.BULLETINS.values()
+    ]
+
+    methods = [
+        methods_by_product.get(product)
+        for product in expected_products
+    ]
+
+    methods = [
+        method
+        for method in methods
+        if method
+    ]
+
+    if not methods:
+        return "BoM rainfall source unknown"
+
+    if all(
+        "FTP" in method
+        for method in methods
+    ):
+        return "BoM anonymous FTP"
+
+    if all(
+        "HTTPS" in method
+        for method in methods
+    ):
+        return "BoM HTTPS HTML fallback"
+
+    if any(
+        "FTP" in method
+        for method in methods
+    ) and any(
+        "HTTPS" in method
+        for method in methods
+    ):
+        return "Mixed: BoM FTP and HTTPS fallback"
+
+    return "BoM rainfall retrieval"
+
 def retrieve():
+    # Clear the previous run's method information.
+    if hasattr(
+        rb,
+        "LAST_RETRIEVAL_METHOD",
+    ):
+        rb.LAST_RETRIEVAL_METHOD.clear()
+
     records, issued, errors = rb.collect()
+
+    source = rainfall_source_label()
 
     return (
         records,
         issued,
         errors,
-        "BoM live rainfall bulletins",
+        source,
     )
 
 def csv_bytes(df):
@@ -330,9 +392,7 @@ if df.empty:
 
     st.stop()
 
-meta1, meta2 = st.columns(2)
-meta1.metric("Data source", st.session_state.get("source", "Unknown"))
-meta2.metric("Retrieved", st.session_state.get("fetched_at", "Unknown").replace("T", " "))
+
 
 st.subheader("Rainfall Forecasts")
 
@@ -419,26 +479,66 @@ if forecast_rows:
         "forecast are summed separately. A blank means the "
         "forecast could not be retrieved for that location."
     )
+st.divider()
 
+# =========================================================
+# Observed rainfall
+# =========================================================
 
-st.subheader("Rainfall Occured")
+st.subheader("Rainfall Occurred")
+
+source_left, source_right = st.columns(2)
+
+source_left.metric(
+    "Data source",
+    st.session_state.get(
+        "source",
+        "Unknown",
+    ),
+)
+
+retrieved_value = st.session_state.get(
+    "fetched_at"
+)
+
+if retrieved_value:
+    retrieved_display = (
+        retrieved_value
+        .replace("T", " ")
+        .replace("+10:00", " AEST")
+    )
+else:
+    retrieved_display = "Unknown"
+
+source_right.metric(
+    "Retrieved",
+    retrieved_display,
+)
 
 st.dataframe(
     latest_table(df),
     hide_index=True,
     width="stretch",
     column_config={
-        "Past 3 hours (mm)": st.column_config.NumberColumn(
-            format="%.1f"
+        "Past 3 hours (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
         ),
-        "Past 6 hours (mm)": st.column_config.NumberColumn(
-            format="%.1f"
+        "Past 6 hours (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
         ),
-        "Past 1 day (mm)": st.column_config.NumberColumn(
-            format="%.1f"
+        "Past 1 day (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
         ),
-        "Past 2 days (mm)": st.column_config.NumberColumn(
-            format="%.1f"
+        "Past 2 days (mm)": (
+            st.column_config.NumberColumn(
+                format="%.1f"
+            )
         ),
     },
 )
@@ -450,10 +550,8 @@ st.caption(
     "means one or more required observations were unavailable."
 )
 
-st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
-
-
 st.divider()
+
 st.header("Current River Levels")
 st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
 
