@@ -19,36 +19,12 @@ SERIES_LABELS = {
 }
 STATION_ORDER = [s["label"] for s in rb.STATIONS]
 
-def read_uploads(files):
-    """Return product-keyed HTML from files named 1h, 3h and 24h."""
-    result = {}
-    for file in files or []:
-        name = file.name.lower()
-        key = next((k for k in rb.BULLETINS if k in name), None)
-        if key:
-            result[key] = file.getvalue().decode("utf-8", errors="replace")
-    return result
-
-def collect_uploaded(uploaded):
-    records, issued, errors = [], {}, []
-    for key in rb.BULLETINS:
-        if key not in uploaded:
-            errors.append(f"{key}: no uploaded file found; include '{key}' in its filename")
-            continue
-        try:
-            issue_time, rows = rb.parse_bulletin(uploaded[key], key)
-            issued[key] = issue_time.isoformat()
-            records.extend(rb.station_records(rows, issue_time, key))
-        except rb.BulletinError as exc:
-            errors.append(f"{key}: {exc}")
-    return records, issued, errors
-
 def retrieve(uploaded_files):
     uploaded = read_uploads(uploaded_files)
     if uploaded:
         return (*collect_uploaded(uploaded), "Uploaded HTML")
     records, issued, errors = rb.collect()
-    return records, issued, errors, "Live BoM bulletins"
+    return records, issued, errors, "Live BoM Bulletins"
 
 def dataframe(records):
     if not records:
@@ -192,6 +168,16 @@ def latest_table(df):
             "station": "Location",
     })
 
+def retrieve():
+    records, issued, errors = rb.collect()
+
+    return (
+        records,
+        issued,
+        errors,
+        "BoM live rainfall bulletins",
+    )
+
 def csv_bytes(df):
     export = df.copy()
     if "station" in export:
@@ -201,21 +187,72 @@ def csv_bytes(df):
 st.title("Rainfall Data Extractor")
 st.caption("Selected BoM flood-warning gauges: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
-with st.sidebar:
-    st.header("Retrieve data")
-    uploads = st.file_uploader(
-        "Optional saved bulletin pages",
-        type=["html", "htm"], accept_multiple_files=True,
-        help="Only use this if live retrieval is blocked. Name the files 1h.html, 3h.html and 24h.html.",
+st.markdown(
+    """
+    <style>
+    .st-key-floating-rainfall-refresh {
+        position: fixed;
+        top: 4.5rem;
+        right: 1.25rem;
+        z-index: 999999;
+        width: auto;
+        padding: 0.35rem;
+        border-radius: 0.75rem;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid rgba(128, 128, 128, 0.35);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+    }
+
+    .st-key-floating-rainfall-refresh button {
+        white-space: nowrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .st-key-floating-rainfall-refresh {
+            background: rgba(30, 30, 30, 0.96);
+        }
+    }
+
+    @media (max-width: 600px) {
+        .st-key-floating-rainfall-refresh {
+            top: auto;
+            right: 0.75rem;
+            bottom: 1rem;
+            max-width: calc(100vw - 1.5rem);
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.container(
+    key="floating-rainfall-refresh",
+):
+    retrieve_clicked = st.button(
+        "Retrieve Latest Rainfall",
+        type="primary",
+        key="retrieve_latest_rainfall",
+        width="content",
     )
-    retrieve_clicked = st.button("Retrieve latest rainfall", type="primary", use_container_width=True)
-    st.caption("With no uploads, the app requests the three live BoM bulletins. Uploaded pages override live retrieval.")
+
 
 if retrieve_clicked or "records" not in st.session_state:
-    with st.spinner("Retrieving and checking rainfall data..."):
-        records, issued, errors, source = retrieve(uploads)
-    st.session_state.update(records=records, issued=issued, errors=errors, source=source,
-                            fetched_at=datetime.now(rb.AEST).isoformat(timespec="seconds"))
+    with st.spinner(
+        "Retrieving and checking rainfall data..."
+    ):
+        records, issued, errors, source = retrieve()
+
+    st.session_state.update(
+        records=records,
+        issued=issued,
+        errors=errors,
+        source=source,
+        fetched_at=datetime.now(
+            rb.AEST
+        ).isoformat(timespec="seconds"),
+    )
 
 records = st.session_state.get("records", [])
 errors = st.session_state.get("errors", [])
@@ -227,8 +264,16 @@ if errors:
             st.warning(error)
 
 if df.empty:
-    st.error("No rainfall readings were retrieved. BoM may have blocked the request, or its page layout may have changed.")
-    st.info("Fallback: save the three BoM pages as 1h.html, 3h.html and 24h.html, upload them in the sidebar, then click Retrieve latest rainfall.")
+    st.error(
+        "No rainfall readings were retrieved. "
+        "The BoM connection may be temporarily unavailable."
+    )
+
+    st.info(
+        "Try Retrieve Latest Rainfall again. If the issue continues, "
+        "review Technical Tools at the bottom of the page."
+    )
+
     st.stop()
 
 meta1, meta2 = st.columns(2)
@@ -236,12 +281,22 @@ meta1.metric("Data source", st.session_state.get("source", "Unknown"))
 meta2.metric("Retrieved", st.session_state.get("fetched_at", "Unknown").replace("T", " "))
 
 st.subheader("Latest rainfall totals")
-st.dataframe(latest_table(df), hide_index=True, use_container_width=True,
-             column_config={c: st.column_config.NumberColumn(format="%.1f") for c in
-                            ["Latest 1 h (mm)", "Latest 3 h (mm)", "24 h to 9 am (mm)", "Since 9 am (mm)"]})
+st.dataframe(
+    latest_table(df),
+    hide_index=True,
+    width="stretch",
+    column_config={
+        column: st.column_config.NumberColumn(
+            format="%.1f"
+        )
+        for column in [
+            "Past 3 hours (mm)",
+            "Past 24 hours (mm)",
+            "Past 3 days (mm)",
+        ]
+    },
+)
 st.caption("A blank cell means no observation was reported for that gauge and period. It does not mean zero rainfall.")
-
-# import forecast_backend as forecast
 
 st.subheader("Rainfall Forecasts")
 
@@ -382,7 +437,7 @@ with st.expander("Detailed readings", expanded=False):
     st.dataframe(
         display,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Rainfall (mm)": st.column_config.NumberColumn(
                 format="%.1f"
@@ -395,12 +450,12 @@ with st.expander("Detailed readings", expanded=False):
         csv_bytes(display),
         file_name="bom_rainfall_readings.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 snapshot = {"fetched_at": st.session_state.get("fetched_at"), "issued": st.session_state.get("issued"),
             "errors": errors, "records": records}
 st.download_button("Download complete snapshot (JSON)", json.dumps(snapshot, indent=2),
-                   file_name="bom_rainfall_snapshot.json", mime="application/json", use_container_width=True)
+                   file_name="bom_rainfall_snapshot.json", mime="application/json", width="stretch")
 
 with st.expander("Data notes"):
     st.write("This tool reports BoM bulletin values and does not independently quality-control the gauges.")
@@ -408,25 +463,17 @@ with st.expander("Data notes"):
     if st.session_state.get("issued"):
         st.json(st.session_state["issued"])
 
-# import river_level_backend as river
-
 st.divider()
 st.header("Current River Levels")
 st.caption("Selected river-height observations from BoM bulletin IDQ60286.")
 
-river_upload = st.file_uploader(
-    "Optional saved IDQ60286 river-height page",
-    type=["html", "htm", "txt"],
-    key="river_level_upload",
-    help="Only needed if BoM blocks automatic retrieval.",
-)
 river_refresh = st.button("Retrieve current river levels", key="river_level_refresh")
 
 if river_refresh or "river_level_records" not in st.session_state:
     try:
-        river_html = (river_upload.getvalue().decode("utf-8", errors="replace")
-                      if river_upload is not None else None)
-        river_records, river_issued, river_source = river.collect_river_levels(river_html)
+        river_records, river_issued, river_source = (
+        river.collect_river_levels()
+        )
         st.session_state.river_level_records = river_records
         st.session_state.river_level_issued = river_issued
         st.session_state.river_level_source = river_source
@@ -447,7 +494,7 @@ if river_records:
     st.dataframe(
         river_df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Current River Level (m)": st.column_config.NumberColumn(format="%.2f m"),
         },
