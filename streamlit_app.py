@@ -797,6 +797,24 @@ st.markdown(
             white-space: nowrap;
         }
     }
+    .st-key-download-completed-daily-record button {
+        background-color: #18864b;
+        color: white;
+        border: 1px solid #18864b;
+    }
+
+    .st-key-download-completed-daily-record button:hover {
+        background-color: #126a3a;
+        color: white;
+        border-color: #126a3a;
+    }
+
+    .st-key-download-completed-daily-record button:focus {
+        background-color: #18864b;
+        color: white;
+        border-color: #18864b;
+        box-shadow: 0 0 0 0.2rem rgba(24, 134, 75, 0.25);
+    }
     </style>
     """,
     unsafe_allow_html=True,
