@@ -275,6 +275,42 @@ def rainfall_source_label():
 
     return "BoM rainfall retrieval"
 
+def format_aest_datetime(value):
+    """
+    Format a datetime value as:
+    DD-MM-YY HH:MM AEST
+    """
+
+    if value is None or str(value).strip() in {
+        "",
+        "Unknown",
+        "None",
+    }:
+        return "Unknown"
+
+    try:
+        timestamp = pd.to_datetime(value)
+
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.tz_localize(
+                rb.AEST
+            )
+        else:
+            timestamp = timestamp.tz_convert(
+                rb.AEST
+            )
+
+        return timestamp.strftime(
+            "%d-%m-%y %H:%M AEST"
+        )
+
+    except (
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
+        return str(value)
+
 def retrieve():
     records, issued, errors = rb.collect()
 
@@ -490,22 +526,13 @@ source_left.metric(
     ),
 )
 
-retrieved_value = st.session_state.get(
-    "fetched_at"
-)
-
-if retrieved_value:
-    retrieved_display = (
-        retrieved_value
-        .replace("T", " ")
-        .replace("+10:00", " AEST")
-    )
-else:
-    retrieved_display = "Unknown"
-
 source_right.metric(
     "Retrieved",
-    retrieved_display,
+    format_aest_datetime(
+        st.session_state.get(
+            "fetched_at"
+        )
+    ),
 )
 
 st.dataframe(
@@ -545,7 +572,7 @@ st.caption(
 
 st.divider()
 
-st.header("Current River Levels")
+st.subheader("Current River Levels")
 
 river_refresh = st.button(
     "Retrieve current river levels",
@@ -573,7 +600,14 @@ if (
         st.session_state.river_level_source = (
             river_source
         )
-
+        st.session_state.river_level_retrieved_at = (
+            datetime.now(
+                rb.AEST
+            ).isoformat(
+                timespec="seconds"
+            )
+        )
+        
         st.session_state.river_level_error = None
 
     except Exception as exc:
@@ -587,9 +621,24 @@ if st.session_state.get("river_level_error"):
 river_records = st.session_state.get("river_level_records", [])
 if river_records:
     river_df = pd.DataFrame(river_records)
-    info_left, info_right = st.columns(2)
-    info_left.metric("River data source", st.session_state.get("river_level_source", "Unknown"))
-    info_right.metric("River bulletin issued", st.session_state.get("river_level_issued") or "Unknown")
+info_left, info_right = st.columns(2)
+
+info_left.metric(
+    "Data source",
+    st.session_state.get(
+        "river_level_source",
+        "Unknown",
+    ),
+)
+
+info_right.metric(
+    "Retrieved",
+    format_aest_datetime(
+        st.session_state.get(
+            "river_level_retrieved_at"
+        )
+    ),
+)
 
     st.dataframe(
         river_df,
