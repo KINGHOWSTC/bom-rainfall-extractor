@@ -68,29 +68,52 @@ ISSUED_RE = re.compile(
 
 TARGET_GAUGES = [
     {
-        "gauge": "540388",
-        "location": "Rosewood",
-        "source": "Bremer River at Rosewood",
+        "gauge": "540065",
+        "location": "Peak Crossing",
     },
     {
-        "gauge": "540147",
-        "location": "Five Mile Bridge",
-        "source": "Bremer River at Five Mile Bridge",
+        "gauge": "540062",
+        "location": "Loamside",
     },
     {
         "gauge": "540057",
         "location": "Kalbar",
-        "source": "Warrill Creek at Kalbar Weir TW",
+    },
+    {
+        "gauge": "540387",
+        "location": "Harrisville",
+    },
+    {
+        "gauge": "540180",
+        "location": "Amberley",
+    },
+    {
+        "gauge": "540157",
+        "location": "Adams Bridge",
+    },
+    {
+        "gauge": "540388",
+        "location": "Rosewood",
+    },
+    {
+        "gauge": "540147",
+        "location": "Five Mile Bridge",
     },
     {
         "gauge": "540504",
         "location": "Walloon",
-        "source": "Bremer River at Walloon",
+    },
+    {
+        "gauge": "040836",
+        "location": "One Mile Bridge",
+    },
+    {
+        "gauge": "540250",
+        "location": "Hancocks Bridge",
     },
     {
         "gauge": "040831",
         "location": "Ipswich",
-        "source": "Bremer River at Ipswich",
     },
 ]
 
@@ -427,14 +450,6 @@ def parse_river_levels(
         if target is None:
             continue
 
-        if values[0] != target["source"]:
-            raise RiverLevelError(
-                f"Gauge {gauge} was found as "
-                f"'{values[0]}', but the configured "
-                f"source station is "
-                f"'{target['source']}'."
-            )
-
         height_text = values[3]
 
         try:
@@ -467,34 +482,33 @@ def parse_river_levels(
             "Rising/Falling/Steady": tendency,
         })
 
-    found_gauges = {
-        record["Gauge Number"]
+    records_by_gauge = {
+        record["Gauge Number"]: record
         for record in records
     }
 
-    missing_gauges = [
-        item["gauge"]
-        for item in TARGET_GAUGES
-        if item["gauge"] not in found_gauges
-    ]
+    complete_records = []
 
-    if missing_gauges:
-        raise RiverLevelError(
-            "Required river gauges were not found: "
-            + ", ".join(missing_gauges)
-        )
+    for target in TARGET_GAUGES:
+        gauge = target["gauge"]
 
-    gauge_order = [
-        item["gauge"]
-        for item in TARGET_GAUGES
-    ]
+        if gauge in records_by_gauge:
+            complete_records.append(
+                records_by_gauge[gauge]
+            )
+            continue
 
-    records.sort(
-        key=lambda record:
-        gauge_order.index(
-            record["Gauge Number"]
-        )
-    )
+        complete_records.append({
+            "Gauge Number": gauge,
+            "Location": target["location"],
+            "Source Station": None,
+            "Observation Time": None,
+            "Current River Level (m)": None,
+            "Gauge Datum": None,
+            "Rising/Falling/Steady": None,
+        })
+
+    records = complete_records
 
     return records, issued
 
