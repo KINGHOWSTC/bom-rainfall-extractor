@@ -168,11 +168,16 @@ def fetch_html_from_ftp(product):
             errors="replace",
         )
 
-    if product not in html:
-        raise BulletinError(
-            f"FTP file {filename} did not contain the "
-            f"expected product identifier {product}."
-        )
+    soup = BeautifulSoup(
+        html,
+        "lxml",
+    )
+
+if not soup.select("table.rhb"):
+    raise BulletinError(
+        f"FTP file {filename} did not contain "
+        "the expected rainfall tables."
+    )
 
     return html
 
