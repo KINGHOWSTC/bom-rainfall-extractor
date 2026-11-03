@@ -1,8 +1,14 @@
 """Streamlit front end for selected BoM rainfall gauges."""
+
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 import json
+
 import pandas as pd
 import streamlit as st
+from openpyxl import load_workbook
+
 import rainfall_backend as rb
 import river_level_backend as river
 import forecast_backend as forecast
@@ -397,6 +403,356 @@ def csv_bytes(df):
         export["station"] = export["station"].astype(str)
     return export.to_csv(index=False).encode("utf-8-sig")
 
+# =========================================================
+# Excel daily-record generation
+# =========================================================
+
+EXCEL_TEMPLATE_PATH = Path(
+    __file__
+).with_name(
+    "FloodWarningSystem_Template.xlsx"
+)
+
+
+def normalise_gauge(value):
+    """
+    Convert a gauge identifier to a six-character text value.
+
+    Examples:
+        40135  -> 040135
+        40793  -> 040793
+        40831  -> 040831
+        540250 -> 540250
+    """
+
+    if value is None:
+        return ""
+
+    if isinstance(value, float):
+        if pd.isna(value):
+            return ""
+
+        if value.is_integer():
+            value = int(value)
+
+    digits = "".join(
+        character
+        for character in str(value)
+        if character.isdigit()
+    )
+
+    if not digits:
+        return ""
+
+    return digits.zfill(6)
+
+
+def excel_safe_value(value):
+    """
+    Return None for missing pandas values so Excel receives
+    a genuinely blank cell instead of 'nan' or 'None'.
+    """
+
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+        pass
+
+    return value
+
+
+def gauge_row_lookup(
+    worksheet,
+    first_row,
+    last_row,
+):
+    """
+    Read the prefilled gauge numbers from column B and return:
+
+        {
+            "040135": 3,
+            "540387": 4,
+            ...
+        }
+
+    The app therefore matches by gauge number rather than relying
+    on the template rows being in exactly the same order as Streamlit.
+    """
+
+    lookup = {}
+
+    for row_number in range(
+        first_row,
+        last_row + 1,
+    ):
+        gauge = normalise_gauge(
+            worksheet.cell(
+                row=row_number,
+                column=2,
+            ).value
+        )
+
+        if gauge:
+            lookup[gauge] = row_number
+
+    return lookup
+
+
+def populate_forecast_rows(
+    worksheet,
+    forecast_rows,
+):
+    """
+    Populate the Rainfall Forecast section.
+
+    Rows:
+        3–8
+
+    Columns populated:
+        E = 1 Day Forecast
+        F = 3 Day Forecast
+        G = 5 Day Forecast
+
+    All other cells remain untouched.
+    """
+
+    row_lookup = gauge_row_lookup(
+        worksheet,
+        first_row=3,
+        last_row=8,
+    )
+
+    for record in forecast_rows:
+        gauge = normalise_gauge(
+            record.get("Station Number")
+        )
+
+        row_number = row_lookup.get(
+            gauge
+        )
+
+        if row_number is None:
+            continue
+
+        # E: 1 Day Forecast
+        worksheet.cell(
+            row=row_number,
+            column=5,
+        ).value = excel_safe_value(
+            record.get("1 Day Forecast")
+        )
+
+        # F: 3 Day Forecast
+        worksheet.cell(
+            row=row_number,
+            column=6,
+        ).value = excel_safe_value(
+            record.get("3 Day Forecast")
+        )
+
+        # G: 5 Day Forecast
+        worksheet.cell(
+            row=row_number,
+            column=7,
+        ).value = excel_safe_value(
+            record.get("5 Day Forecast")
+        )
+
+
+def populate_observed_rainfall_rows(
+    worksheet,
+    rainfall_table,
+):
+    """
+    Populate the Rainfall Occurred section.
+
+    Rows:
+        10–15
+
+    Columns populated:
+        E = Past 3 Hours
+        F = Past 6 Hours
+        G = Past 24 Hours
+        H = Past 2 Days
+
+    Alert Level and Actions remain untouched.
+    """
+
+    row_lookup = gauge_row_lookup(
+        worksheet,
+        first_row=10,
+        last_row=15,
+    )
+
+    for _, record in rainfall_table.iterrows():
+        gauge = normalise_gauge(
+            record.get("Station number")
+        )
+
+        row_number = row_lookup.get(
+            gauge
+        )
+
+        if row_number is None:
+            continue
+
+        # E: Past 3 Hours
+        worksheet.cell(
+            row=row_number,
+            column=5,
+        ).value = excel_safe_value(
+            record.get("Past 3 hours (mm)")
+        )
+
+        # F: Past 6 Hours
+        worksheet.cell(
+            row=row_number,
+            column=6,
+        ).value = excel_safe_value(
+            record.get("Past 6 hours (mm)")
+        )
+
+        # G: Past 24 Hours
+        # Streamlit calls this "Past 1 day".
+        worksheet.cell(
+            row=row_number,
+            column=7,
+        ).value = excel_safe_value(
+            record.get("Past 1 day (mm)")
+        )
+
+        # H: Past 2 Days
+        worksheet.cell(
+            row=row_number,
+            column=8,
+        ).value = excel_safe_value(
+            record.get("Past 2 days (mm)")
+        )
+
+
+def populate_river_rows(
+    worksheet,
+    river_records,
+):
+    """
+    Populate the Current River Levels section.
+
+    Rows:
+        17–21
+
+    Columns populated:
+        E = Observation Time
+        F = Current River Level
+        G = Rising/Falling/Steady
+
+    Columns H:J remain untouched.
+    """
+
+    row_lookup = gauge_row_lookup(
+        worksheet,
+        first_row=17,
+        last_row=21,
+    )
+
+    for record in river_records:
+        gauge = normalise_gauge(
+            record.get("Gauge Number")
+        )
+
+        row_number = row_lookup.get(
+            gauge
+        )
+
+        if row_number is None:
+            continue
+
+        # E: Observation Time
+        worksheet.cell(
+            row=row_number,
+            column=5,
+        ).value = excel_safe_value(
+            record.get("Observation Time")
+        )
+
+        # F: Current River Level
+        worksheet.cell(
+            row=row_number,
+            column=6,
+        ).value = excel_safe_value(
+            record.get(
+                "Current River Level (m)"
+            )
+        )
+
+        # G: Rising/Falling/Steady
+        worksheet.cell(
+            row=row_number,
+            column=7,
+        ).value = excel_safe_value(
+            record.get(
+                "Rising/Falling/Steady"
+            )
+        )
+
+
+def build_completed_excel(
+    forecast_rows,
+    rainfall_table,
+    river_records,
+):
+    """
+    Open the Excel template, populate a fresh copy in memory and
+    return the completed workbook as bytes.
+
+    The original template in GitHub is never edited or overwritten.
+    """
+
+    if not EXCEL_TEMPLATE_PATH.exists():
+        raise FileNotFoundError(
+            "FloodWarningSystem_Template.xlsx was not found "
+            "beside streamlit_app.py."
+        )
+
+    workbook = load_workbook(
+        EXCEL_TEMPLATE_PATH
+    )
+
+    # Use the first worksheet in the template.
+    worksheet = workbook.active
+
+    populate_forecast_rows(
+        worksheet,
+        forecast_rows,
+    )
+
+    populate_observed_rainfall_rows(
+        worksheet,
+        rainfall_table,
+    )
+
+    populate_river_rows(
+        worksheet,
+        river_records,
+    )
+
+    output = BytesIO()
+
+    workbook.save(
+        output
+    )
+
+    output.seek(0)
+
+    return output.getvalue()
+
 st.title("Rainfall Data Extractor")
 st.caption("Selected BoM flood-warning gauges: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
@@ -765,6 +1121,97 @@ else:
     )
 
 st.divider()
+
+# =========================================================
+# Completed Excel daily record
+# =========================================================
+
+st.divider()
+
+st.subheader("Daily Record Sheet")
+
+st.caption(
+    "Download the current rainfall forecasts, observed rainfall "
+    "and river levels into the formatted Excel template."
+)
+
+forecast_for_excel = st.session_state.get(
+    "forecast_rows",
+    [],
+)
+
+rainfall_for_excel = latest_table(
+    df
+)
+
+river_for_excel = st.session_state.get(
+    "river_level_records",
+    [],
+)
+
+excel_ready = (
+    bool(forecast_for_excel)
+    and not rainfall_for_excel.empty
+    and bool(river_for_excel)
+)
+
+if excel_ready:
+    try:
+        completed_excel = build_completed_excel(
+            forecast_rows=forecast_for_excel,
+            rainfall_table=rainfall_for_excel,
+            river_records=river_for_excel,
+        )
+
+        download_timestamp = datetime.now(
+            rb.AEST
+        ).strftime(
+            "%Y-%m-%d_%H%M"
+        )
+
+        st.download_button(
+            "Download Completed Daily Record (.xlsx)",
+            data=completed_excel,
+            file_name=(
+                "FloodWarningSystem_"
+                f"{download_timestamp}.xlsx"
+            ),
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            width="stretch",
+            key="download_completed_daily_record",
+        )
+
+    except Exception as exc:
+        st.error(
+            f"Could not create the Excel daily record: {exc}"
+        )
+
+else:
+    missing_sections = []
+
+    if not forecast_for_excel:
+        missing_sections.append(
+            "rainfall forecasts"
+        )
+
+    if rainfall_for_excel.empty:
+        missing_sections.append(
+            "observed rainfall"
+        )
+
+    if not river_for_excel:
+        missing_sections.append(
+            "river levels"
+        )
+
+    st.info(
+        "Retrieve "
+        + ", ".join(missing_sections)
+        + " before downloading the completed daily record."
+    )
 
 with st.expander(
     "Technical Tools",
