@@ -429,10 +429,16 @@ st.markdown(
 
     @media (max-width: 600px) {
         .st-key-floating-rainfall-refresh {
-            top: auto;
+            top: 4.25rem;
             right: 0.75rem;
-            bottom: 1rem;
+            bottom: auto;
             max-width: calc(100vw - 1.5rem);
+        }
+
+        .st-key-floating-rainfall-refresh button {
+            font-size: 0.85rem;
+            padding: 0.4rem 0.65rem;
+            white-space: nowrap;
         }
     }
     </style>
