@@ -276,16 +276,9 @@ def rainfall_source_label():
     return "BoM rainfall retrieval"
 
 def retrieve():
-    # Clear the previous run's method information.
-    if hasattr(
-        rb,
-        "LAST_RETRIEVAL_METHOD",
-    ):
-        rb.LAST_RETRIEVAL_METHOD.clear()
-
     records, issued, errors = rb.collect()
 
-    source = rainfall_source_label()
+    source = rb.get_retrieval_source()
 
     return (
         records,
@@ -884,3 +877,19 @@ with st.expander(
                     "rainfall_backend.py, the app can continue "
                     "retrieving rainfall without FTP."
                 )
+            st.write(
+                "Rainfall retrieval methods:"
+            )
+
+            if rb.LAST_RETRIEVAL_METHOD:
+                for product, method in (
+                    rb.LAST_RETRIEVAL_METHOD.items()
+                ):
+                    st.write(
+                        f"{product}: {method}"
+                    )
+            else:
+                st.write(
+                    "No rainfall retrieval has been completed."
+                )
+                
