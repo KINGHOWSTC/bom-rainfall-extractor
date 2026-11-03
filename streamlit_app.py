@@ -1149,18 +1149,22 @@ if river_records:
         ),
     )
 
-    st.dataframe(
-        river_df,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Current River Level (m)": (
-                st.column_config.NumberColumn(
-                    format="%.2f m"
-                )
-            ),
-        },
-    )
+    # Allow enough vertical space for all 12 gauges plus the header.
+river_table_height = 38 + (len(river_df) * 35)
+
+st.dataframe(
+    river_df,
+    hide_index=True,
+    width="stretch",
+    height=river_table_height,
+    column_config={
+        "Current River Level (m)": (
+            st.column_config.NumberColumn(
+                format="%.2f m"
+            )
+        ),
+    },
+)
 
     st.caption(
         "Current River Level is adopted from Height (m). "
