@@ -777,6 +777,45 @@ st.markdown(
         white-space: nowrap;
     }
 
+    /* Green Excel download button */
+    .st-key-green_excel_download
+    [data-testid="stDownloadButton"] button,
+    .st-key-green-excel-download
+    [data-testid="stDownloadButton"] button {
+        background-color: #18864b !important;
+        color: #ffffff !important;
+        border: 1px solid #18864b !important;
+        font-weight: 600 !important;
+    }
+
+    .st-key-green_excel_download
+    [data-testid="stDownloadButton"] button:hover,
+    .st-key-green-excel-download
+    [data-testid="stDownloadButton"] button:hover {
+        background-color: #126a3a !important;
+        color: #ffffff !important;
+        border-color: #126a3a !important;
+    }
+
+    .st-key-green_excel_download
+    [data-testid="stDownloadButton"] button:focus,
+    .st-key-green-excel-download
+    [data-testid="stDownloadButton"] button:focus {
+        background-color: #18864b !important;
+        color: #ffffff !important;
+        border-color: #18864b !important;
+        box-shadow:
+            0 0 0 0.2rem
+            rgba(24, 134, 75, 0.3) !important;
+    }
+
+    .st-key-green_excel_download
+    [data-testid="stDownloadButton"] button p,
+    .st-key-green-excel-download
+    [data-testid="stDownloadButton"] button p {
+        color: #ffffff !important;
+    }
+
     @media (prefers-color-scheme: dark) {
         .st-key-floating-rainfall-refresh {
             background: rgba(30, 30, 30, 0.96);
@@ -797,29 +836,10 @@ st.markdown(
             white-space: nowrap;
         }
     }
-    .st-key-download-completed-daily-record button {
-        background-color: #18864b;
-        color: white;
-        border: 1px solid #18864b;
-    }
-
-    .st-key-download-completed-daily-record button:hover {
-        background-color: #126a3a;
-        color: white;
-        border-color: #126a3a;
-    }
-
-    .st-key-download-completed-daily-record button:focus {
-        background-color: #18864b;
-        color: white;
-        border-color: #18864b;
-        box-shadow: 0 0 0 0.2rem rgba(24, 134, 75, 0.25);
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 with st.container(
     key="floating-rainfall-refresh",
 ):
@@ -1187,19 +1207,22 @@ if excel_ready:
             "%Y-%m-%d_%H%M"
         )
 
-        st.download_button(
-            "Download Completed Daily Record (.xlsx)",
-            data=completed_excel,
-            file_name=(
-                "FloodWarningSystem_"
-                f"{download_timestamp}.xlsx"
-            ),
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            width="stretch",
-            key="download_completed_daily_record",
+        with st.container(
+            key="green_excel_download",
+        ):
+            st.download_button(
+                "Download Completed Daily Record (.xlsx)",
+                data=completed_excel,
+                file_name=(
+                    "FloodWarningSystem_"
+                    f"{download_timestamp}.xlsx"
+                ),
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "spreadsheetml.sheet"
+                ),
+                width="stretch",
+                key="download_completed_daily_record",
         )
 
     except Exception as exc:
