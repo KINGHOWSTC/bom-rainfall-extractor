@@ -707,33 +707,33 @@ if river_records:
         river_records
     )
 
-info_left, info_middle, info_right = st.columns(3)
+    info_left, info_middle, info_right = st.columns(3)
 
-info_left.metric(
-    "Data source",
-    st.session_state.get(
-        "river_level_source",
-        "Unknown",
-    ),
-)
-
-info_middle.metric(
-    "Bulletin issued",
-    format_bom_issue_datetime(
+    info_left.metric(
+        "Data source",
         st.session_state.get(
-            "river_level_issued"
-        )
-    ),
-)
+            "river_level_source",
+            "Unknown",
+        ),
+    )
 
-info_right.metric(
-    "Retrieved by app",
-    format_aest_datetime(
-        st.session_state.get(
-            "river_level_retrieved_at"
-        )
-    ),
-)
+    info_middle.metric(
+        "Bulletin issued",
+        format_bom_issue_datetime(
+            st.session_state.get(
+                "river_level_issued"
+            )
+        ),
+    )
+
+    info_right.metric(
+        "Retrieved by app",
+        format_aest_datetime(
+            st.session_state.get(
+                "river_level_retrieved_at"
+            )
+        ),
+    )
 
     st.dataframe(
         river_df,
@@ -752,6 +752,7 @@ info_right.metric(
         "Current River Level is adopted from Height (m). "
         "Rising/Falling/Steady is adopted from Tendency."
     )
+
 else:
     st.info(
         "No current river-level records are available."
