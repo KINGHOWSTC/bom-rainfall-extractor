@@ -119,6 +119,34 @@ def norm(name):
 
 
 # ----------------------------- fetching ------------------------------------ #
+def validate_rainfall_html(
+    html,
+    product,
+    source,
+):
+    """
+    Confirm that the retrieved content contains BoM rainfall tables.
+    """
+
+    if not html or not html.strip():
+        raise BulletinError(
+            f"{source} returned an empty file for {product}."
+        )
+
+    soup = BeautifulSoup(
+        html,
+        "lxml",
+    )
+
+    if not soup.select("table.rhb"):
+        raise BulletinError(
+            f"{source} did not contain the expected "
+            f"rainfall tables for {product}."
+        )
+
+    return html
+
+
 def fetch_html_from_ftp(product):
     """
     Retrieve the latest BoM FWO product using anonymous FTP.
@@ -132,15 +160,9 @@ def fetch_html_from_ftp(product):
             host=FTP_HOST,
             timeout=FTP_TIMEOUT,
         ) as ftp:
-            # Anonymous login.
             ftp.login()
-
-            # BoM forecast, warning and observation products.
-            ftp.cwd(FTP_DIRECTORY)
-
-            # Passive mode is normally more compatible with
-            # cloud services, NAT and corporate firewalls.
             ftp.set_pasv(True)
+            ftp.cwd(FTP_DIRECTORY)
 
             ftp.retrbinary(
                 f"RETR {filename}",
@@ -160,7 +182,7 @@ def fetch_html_from_ftp(product):
         )
 
     try:
-        html = raw.decode("utf-8")
+        html = raw.decode("utf-8-sig")
 
     except UnicodeDecodeError:
         html = raw.decode(
@@ -168,28 +190,22 @@ def fetch_html_from_ftp(product):
             errors="replace",
         )
 
-    soup = BeautifulSoup(
-        html,
-        "lxml",
+    return validate_rainfall_html(
+        html=html,
+        product=product,
+        source=f"FTP file {filename}",
     )
 
-if not soup.select("table.rhb"):
-    raise BulletinError(
-        f"FTP file {filename} did not contain "
-        "the expected rainfall tables."
-    )
-
-    return html
 
 def fetch_html_from_https(product):
     """
-    Retrieve the BoM product through the existing HTTPS page.
-    Used when FTP is unavailable.
+    Retrieve the BoM product through HTTPS.
+
+    This function is used only when FTP is unavailable.
     """
 
-    url = (
-        "https://www.bom.gov.au/cgi-bin/"
-        f"wrap_fwo.pl?{product}.html"
+    url = BASE_URL.format(
+        product=product,
     )
 
     try:
@@ -218,15 +234,11 @@ def fetch_html_from_https(product):
             f"HTTPS request failed for {product}: {exc}"
         ) from exc
 
-    html = response.text
-
-    if product not in html:
-        raise BulletinError(
-            f"HTTPS response did not contain the "
-            f"expected product identifier {product}."
-        )
-
-    return html
+    return validate_rainfall_html(
+        html=response.text,
+        product=product,
+        source="BoM HTTPS response",
+    )
 
 def fetch_html(product):
     """
@@ -240,7 +252,9 @@ def fetch_html(product):
     ftp_error = None
 
     try:
-        html = fetch_html_from_ftp(product)
+        html = fetch_html_from_ftp(
+            product
+        )
 
         LAST_RETRIEVAL_METHOD[product] = (
             f"BoM FTP {product}.html"
@@ -257,7 +271,9 @@ def fetch_html(product):
         )
 
     try:
-        html = fetch_html_from_https(product)
+        html = fetch_html_from_https(
+            product
+        )
 
         LAST_RETRIEVAL_METHOD[product] = (
             f"BoM HTTPS fallback {product}"
@@ -275,7 +291,9 @@ def fetch_html(product):
             f"FTP error: {ftp_error}. "
             f"HTTPS error: {https_error}"
         ) from https_error
+     
 # ---Temporary FTP TEST---
+
 def test_ftp_connection():
     """
     Test access to BoM anonymous FTP and list the rainfall products.
@@ -534,55 +552,49 @@ def get_retrieval_source():
         for product in expected_products
     ]
 
-    available_methods = [
-        method
+    if any(
+        method == "Retrieval failed"
         for method in methods
-        if method
-    ]
+    ):
+        return "Partial rainfall retrieval"
 
-    if not available_methods:
-        return "Rainfall source unavailable"
+    if any(
+        method is None
+        for method in methods
+    ):
+        return "Partial rainfall retrieval"
 
     if all(
         method.startswith("BoM FTP")
-        for method in available_methods
-    ) and len(available_methods) == len(
-        expected_products
+        for method in methods
     ):
         return "BoM anonymous FTP"
 
     if all(
-        method.startswith(
-            "BoM HTTPS"
-        )
-        for method in available_methods
-    ) and len(available_methods) == len(
-        expected_products
+        method.startswith("BoM HTTPS")
+        for method in methods
     ):
         return "BoM HTTPS HTML fallback"
 
     if all(
         method == "Local saved HTML"
-        for method in available_methods
+        for method in methods
     ):
         return "Local saved BoM HTML"
 
-    if any(
-        method.startswith("BoM FTP")
-        for method in available_methods
-    ) and any(
-        method.startswith("BoM HTTPS")
-        for method in available_methods
+    if (
+        any(
+            method.startswith("BoM FTP")
+            for method in methods
+        )
+        and any(
+            method.startswith("BoM HTTPS")
+            for method in methods
+        )
     ):
         return (
             "Mixed: BoM anonymous FTP and "
             "HTTPS fallback"
         )
-
-    if any(
-        method == "Retrieval failed"
-        for method in available_methods
-    ):
-        return "Partial rainfall retrieval"
 
     return "Mixed rainfall retrieval sources"
