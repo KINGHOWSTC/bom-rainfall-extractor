@@ -447,21 +447,137 @@ def station_records(rows, issued, key):
 
 
 def collect(html_dir=None):
-    records, issued_by_bulletin, errors = [], {}, []
-    for i, (key, spec) in enumerate(BULLETINS.items()):
+    records = []
+    issued_by_bulletin = {}
+    errors = []
+
+    # Clear previous retrieval-method information before
+    # performing a new live retrieval.
+    if html_dir is None:
+        LAST_RETRIEVAL_METHOD.clear()
+
+    for i, (key, spec) in enumerate(
+        BULLETINS.items()
+    ):
         try:
             if html_dir:
-                html = Path(html_dir, f"{key}.html").read_text(encoding="utf-8")
+                html = Path(
+                    html_dir,
+                    f"{key}.html",
+                ).read_text(
+                    encoding="utf-8"
+                )
+
+                LAST_RETRIEVAL_METHOD[
+                    spec["product"]
+                ] = "Local saved HTML"
+
             else:
                 if i:
                     time.sleep(1.5)
-                html = fetch_html(spec["product"])
-            issued, rows = parse_bulletin(html, key)
-            issued_by_bulletin[key] = issued.isoformat()
-            records += station_records(rows, issued, key)
-        except (BulletinError, OSError) as exc:
-            errors.append(f"{key}: {exc}")
-            warn(f"{key}: {exc}")
-    return records, issued_by_bulletin, errors
 
+                html = fetch_html(
+                    spec["product"]
+                )
 
+            issued, rows = parse_bulletin(
+                html,
+                key,
+            )
+
+            issued_by_bulletin[key] = (
+                issued.isoformat()
+            )
+
+            records += station_records(
+                rows,
+                issued,
+                key,
+            )
+
+        except (
+            BulletinError,
+            OSError,
+        ) as exc:
+            errors.append(
+                f"{key}: {exc}"
+            )
+
+            warn(
+                f"{key}: {exc}"
+            )
+
+    return (
+        records,
+        issued_by_bulletin,
+        errors,
+    )
+
+def get_retrieval_source():
+    """
+    Return a user-facing summary of the retrieval methods
+    used for the current rainfall products.
+    """
+
+    expected_products = [
+        specification["product"]
+        for specification in BULLETINS.values()
+    ]
+
+    methods = [
+        LAST_RETRIEVAL_METHOD.get(product)
+        for product in expected_products
+    ]
+
+    available_methods = [
+        method
+        for method in methods
+        if method
+    ]
+
+    if not available_methods:
+        return "Rainfall source unavailable"
+
+    if all(
+        method.startswith("BoM FTP")
+        for method in available_methods
+    ) and len(available_methods) == len(
+        expected_products
+    ):
+        return "BoM anonymous FTP"
+
+    if all(
+        method.startswith(
+            "BoM HTTPS"
+        )
+        for method in available_methods
+    ) and len(available_methods) == len(
+        expected_products
+    ):
+        return "BoM HTTPS HTML fallback"
+
+    if all(
+        method == "Local saved HTML"
+        for method in available_methods
+    ):
+        return "Local saved BoM HTML"
+
+    if any(
+        method.startswith("BoM FTP")
+        for method in available_methods
+    ) and any(
+        method.startswith("BoM HTTPS")
+        for method in available_methods
+    ):
+        return (
+            "Mixed: BoM anonymous FTP and "
+            "HTTPS fallback"
+        )
+
+    if any(
+        method == "Retrieval failed"
+        for method in available_methods
+    ):
+        return "Partial rainfall retrieval"
+
+    return "Mixed rainfall retrieval sources"
