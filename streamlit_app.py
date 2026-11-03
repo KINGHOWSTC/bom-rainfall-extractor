@@ -35,6 +35,94 @@ def dataframe(records):
     df["station"] = pd.Categorical(df["station"], STATION_ORDER, ordered=True)
     return df.sort_values(["station", "series", "period_end"])
 
+def rainfall_daily_mode(df):
+    """
+    Return 'completed' only when the BoM bulletin contains a
+    completed 24-hour period ending at today's 9 am AEST.
+
+    Otherwise, return 'current' and use the Since 9 am value.
+    """
+
+    if df.empty:
+        return "current"
+
+    now_aest = datetime.now(
+        rb.AEST
+    )
+
+    today_9am = now_aest.replace(
+        hour=9,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    daily_periods = df[
+        df["series"] == "24h"
+    ]
+
+    if daily_periods.empty:
+        return "current"
+
+    latest_daily_end = pd.to_datetime(
+        daily_periods["period_end"],
+        errors="coerce",
+    ).dropna()
+
+    if latest_daily_end.empty:
+        return "current"
+
+    latest_daily_end = latest_daily_end.max()
+
+    if latest_daily_end.tzinfo is None:
+        latest_daily_end = (
+            latest_daily_end.tz_localize(
+                rb.AEST
+            )
+        )
+    else:
+        latest_daily_end = (
+            latest_daily_end.tz_convert(
+                rb.AEST
+            )
+        )
+
+    if latest_daily_end >= today_9am:
+        return "completed"
+
+    return "current"
+
+
+def rainfall_daily_warning(df):
+    """
+    Return a warning after 9:30 am if the new completed
+    24-hour rainfall period has not yet appeared.
+    """
+
+    now_aest = datetime.now(
+        rb.AEST
+    )
+
+    update_threshold = now_aest.replace(
+        hour=9,
+        minute=30,
+        second=0,
+        microsecond=0,
+    )
+
+    if (
+        now_aest >= update_threshold
+        and rainfall_daily_mode(df) != "completed"
+    ):
+        return (
+            "The new 24-hour BoM rainfall period has not yet "
+            "been detected. The table is still showing the "
+            "current rainfall period since 9 am rather than "
+            "labelling stale data as Past 24 hours."
+        )
+
+    return None
+
 def latest_table(df):
     if df.empty:
         return pd.DataFrame()
@@ -53,14 +141,20 @@ def latest_table(df):
         "station",
     ]
 
-    # All completed 3-hour rainfall periods.
+    daily_mode = rainfall_daily_mode(
+        df
+    )
+
+    # =====================================================
+    # Latest completed 3-hour rainfall period
+    # =====================================================
+
     three_hour_data = (
         df[df["series"] == "3h"]
         .sort_values("period_end")
         .copy()
     )
 
-    # Latest completed 3-hour rainfall period.
     past_3_hours = (
         three_hour_data
         .groupby(
@@ -82,7 +176,10 @@ def latest_table(df):
         )
     )
 
-    # Sum the latest two completed 3-hour rainfall periods.
+    # =====================================================
+    # Latest two completed 3-hour rainfall periods
+    # =====================================================
+
     past_6_hours = (
         three_hour_data
         .groupby(
@@ -106,22 +203,24 @@ def latest_table(df):
                             len(values) == 2
                             and values.notna().sum() == 2
                         )
-                        else None
+                        else float("nan")
                     ),
                 )
             }
         )
     )
 
-    # All completed 24-hour rainfall periods.
+    # =====================================================
+    # Completed 24-hour rainfall periods
+    # =====================================================
+
     daily_data = (
         df[df["series"] == "24h"]
         .sort_values("period_end")
         .copy()
     )
 
-    # Latest completed 24-hour rainfall period.
-    past_1_day = (
+    latest_completed_day = (
         daily_data
         .groupby(
             group_columns,
@@ -137,13 +236,14 @@ def latest_table(df):
         ]
         .rename(
             columns={
-                "rainfall_mm": "Past 1 day (mm)",
+                "rainfall_mm": (
+                    "_latest_completed_day"
+                ),
             }
         )
     )
 
-    # Sum the latest two completed 24-hour rainfall periods.
-    past_2_days = (
+    latest_two_completed_days = (
         daily_data
         .groupby(
             group_columns,
@@ -158,7 +258,7 @@ def latest_table(df):
         )
         .agg(
             **{
-                "Past 2 days (mm)": (
+                "_latest_two_completed_days": (
                     "rainfall_mm",
                     lambda values: (
                         values.sum()
@@ -166,15 +266,48 @@ def latest_table(df):
                             len(values) == 2
                             and values.notna().sum() == 2
                         )
-                        else None
+                        else float("nan")
                     ),
                 )
             }
         )
     )
 
-    # Create the station framework first so all configured
-    # locations remain visible even if a period is missing.
+    # =====================================================
+    # Current incomplete rainfall period since 9 am
+    # =====================================================
+
+    since_9am_data = (
+        df[df["series"] == "since_9am"]
+        .sort_values("period_end")
+        .copy()
+    )
+
+    current_period = (
+        since_9am_data
+        .groupby(
+            group_columns,
+            observed=True,
+            group_keys=False,
+        )
+        .tail(1)[
+            [
+                "station_id",
+                "station",
+                "rainfall_mm",
+            ]
+        ]
+        .rename(
+            columns={
+                "rainfall_mm": "_current_period",
+            }
+        )
+    )
+
+    # =====================================================
+    # Create one row for every configured station
+    # =====================================================
+
     table = pd.DataFrame(
         [
             {
@@ -198,15 +331,77 @@ def latest_table(df):
             how="left",
         )
         .merge(
-            past_1_day,
+            latest_completed_day,
             on=group_columns,
             how="left",
         )
         .merge(
-            past_2_days,
+            latest_two_completed_days,
             on=group_columns,
             how="left",
         )
+        .merge(
+            current_period,
+            on=group_columns,
+            how="left",
+        )
+    )
+
+    # =====================================================
+    # Dynamic daily values
+    # =====================================================
+
+    if daily_mode == "completed":
+        # BoM has published the new completed period ending
+        # at today's 9 am boundary.
+        daily_column_name = "Past 24 hours (mm)"
+
+        table[daily_column_name] = table[
+            "_latest_completed_day"
+        ]
+
+        table["Past 2 days (mm)"] = table[
+            "_latest_two_completed_days"
+        ]
+
+    else:
+        # The current reporting period has not yet been moved
+        # into the completed 24-hour columns.
+        daily_column_name = (
+            "Current rainfall period (mm)"
+        )
+
+        table[daily_column_name] = table[
+            "_current_period"
+        ]
+
+        # Current period plus the immediately preceding
+        # completed 24-hour period.
+        table["Past 2 days (mm)"] = table.apply(
+            lambda row: (
+                row["_current_period"]
+                + row["_latest_completed_day"]
+                if (
+                    pd.notna(
+                        row["_current_period"]
+                    )
+                    and pd.notna(
+                        row[
+                            "_latest_completed_day"
+                        ]
+                    )
+                )
+                else float("nan")
+            ),
+            axis=1,
+        )
+
+    table = table.drop(
+        columns=[
+            "_latest_completed_day",
+            "_latest_two_completed_days",
+            "_current_period",
+        ]
     )
 
     table["station"] = pd.Categorical(
@@ -572,18 +767,12 @@ def populate_observed_rainfall_rows(
     rainfall_table,
 ):
     """
-    Populate the Rainfall Occurred section.
+    Populate observed-rainfall rows 10:15.
 
-    Rows:
-        10–15
-
-    Columns populated:
-        E = Past 3 Hours
-        F = Past 6 Hours
-        G = Past 24 Hours
-        H = Past 2 Days
-
-    Alert Level and Actions remain untouched.
+    E = Past 3 Hours
+    F = Past 6 Hours
+    G = Current Rainfall Period or Past 24 Hours
+    H = Past 2 Days
     """
 
     row_lookup = gauge_row_lookup(
@@ -591,6 +780,27 @@ def populate_observed_rainfall_rows(
         first_row=10,
         last_row=15,
     )
+
+    if (
+        "Past 24 hours (mm)"
+        in rainfall_table.columns
+    ):
+        daily_column_name = (
+            "Past 24 hours (mm)"
+        )
+
+        worksheet["G9"] = (
+            "Past 24 Hours"
+        )
+
+    else:
+        daily_column_name = (
+            "Current rainfall period (mm)"
+        )
+
+        worksheet["G9"] = (
+            "Current Rainfall Period"
+        )
 
     for _, record in rainfall_table.iterrows():
         gauge = normalise_gauge(
@@ -609,7 +819,9 @@ def populate_observed_rainfall_rows(
             row=row_number,
             column=5,
         ).value = excel_safe_value(
-            record.get("Past 3 hours (mm)")
+            record.get(
+                "Past 3 hours (mm)"
+            )
         )
 
         # F: Past 6 Hours
@@ -617,16 +829,19 @@ def populate_observed_rainfall_rows(
             row=row_number,
             column=6,
         ).value = excel_safe_value(
-            record.get("Past 6 hours (mm)")
+            record.get(
+                "Past 6 hours (mm)"
+            )
         )
 
-        # G: Past 24 Hours
-        # Streamlit calls this "Past 1 day".
+        # G: Dynamic daily rainfall value
         worksheet.cell(
             row=row_number,
             column=7,
         ).value = excel_safe_value(
-            record.get("Past 1 day (mm)")
+            record.get(
+                daily_column_name
+            )
         )
 
         # H: Past 2 Days
@@ -634,7 +849,9 @@ def populate_observed_rainfall_rows(
             row=row_number,
             column=8,
         ).value = excel_safe_value(
-            record.get("Past 2 days (mm)")
+            record.get(
+                "Past 2 days (mm)"
+            )
         )
 
 
@@ -1028,8 +1245,19 @@ source_right.metric(
     ),
 )
 
+rainfall_summary = latest_table(
+    df
+)
+
+if "Past 24 hours (mm)" in rainfall_summary.columns:
+    daily_column_name = "Past 24 hours (mm)"
+else:
+    daily_column_name = (
+        "Current rainfall period (mm)"
+    )
+
 st.dataframe(
-    latest_table(df),
+    rainfall_summary,
     hide_index=True,
     width="stretch",
     column_config={
@@ -1043,7 +1271,7 @@ st.dataframe(
                 format="%.1f"
             )
         ),
-        "Past 1 day (mm)": (
+        daily_column_name: (
             st.column_config.NumberColumn(
                 format="%.1f"
             )
@@ -1056,13 +1284,31 @@ st.dataframe(
     },
 )
 
-st.caption(
-    "Past 6 hours is the sum of the latest two completed "
-    "3-hour rainfall periods. Past 2 days is the sum of the "
-    "latest two completed 24-hour rainfall periods. A blank "
-    "means one or more required observations were unavailable."
+daily_warning = rainfall_daily_warning(
+    df
 )
 
+if daily_warning:
+    st.warning(
+        daily_warning
+    )
+
+if daily_column_name == "Past 24 hours (mm)":
+    st.caption(
+        "Past 24 hours is the latest completed BoM daily "
+        "period ending at 9 am. Past 2 days is the sum of "
+        "the latest two completed daily periods. Missing "
+        "observations are not treated as zero."
+    )
+else:
+    st.caption(
+        "Current rainfall period is the accumulating BoM "
+        "value since 9 am. Past 2 days combines that current "
+        "period with the immediately preceding completed "
+        "24-hour period. The current period is not an exact "
+        "rolling 24-hour total. Missing observations are not "
+        "treated as zero."
+    )
 st.divider()
 
 st.subheader("Current River Levels")
