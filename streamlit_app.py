@@ -599,13 +599,7 @@ if river_records:
             "Current River Level (m)": st.column_config.NumberColumn(format="%.2f m"),
         },
     )
-    st.download_button(
-        "Download river levels (CSV)",
-        river_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name="bom_current_river_levels.csv",
-        mime="text/csv",
-        key="download_river_levels",
-    )
+    
     st.caption("Current River Level is adopted from Height (m). Rising/Falling/Steady is adopted from Tendency.")
 
 st.divider()
