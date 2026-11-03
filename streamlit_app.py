@@ -1158,8 +1158,6 @@ else:
         "No current river-level records are available."
     )
 
-st.divider()
-
 # =========================================================
 # Completed Excel daily record
 # =========================================================
@@ -1253,6 +1251,8 @@ else:
         + ", ".join(missing_sections)
         + " before downloading the completed daily record."
     )
+
+st.divider()
 
 with st.expander(
     "Technical Tools",
