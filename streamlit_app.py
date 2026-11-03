@@ -275,6 +275,32 @@ def rainfall_source_label():
 
     return "BoM rainfall retrieval"
 
+def latest_bulletin_time(issued):
+    """
+    Return the most recent issue time among the rainfall bulletins.
+    """
+
+    if not issued:
+        return None
+
+    valid_times = []
+
+    for value in issued.values():
+        try:
+            valid_times.append(
+                pd.to_datetime(value)
+            )
+        except (
+            ValueError,
+            TypeError,
+        ):
+            continue
+
+    if not valid_times:
+        return None
+
+    return max(valid_times)
+
 def format_aest_datetime(value):
     """
     Format a datetime value as:
@@ -310,6 +336,48 @@ def format_aest_datetime(value):
         AttributeError,
     ):
         return str(value)
+
+def format_bom_issue_datetime(value):
+    """
+    Format a BoM bulletin issue string such as:
+    03:08 PM AEST Tuesday 3 November 2026
+
+    Output:
+    03-11-26 15:08 AEST
+    """
+
+    if value is None or str(value).strip() in {
+        "",
+        "Unknown",
+        "None",
+    }:
+        return "Unknown"
+
+    text = str(value).strip()
+
+    formats = [
+        "%I:%M %p AEST %A %d %B %Y",
+        "%I:%M %p EST %A %d %B %Y",
+    ]
+
+    for date_format in formats:
+        try:
+            timestamp = datetime.strptime(
+                text,
+                date_format,
+            )
+
+            return timestamp.strftime(
+                "%d-%m-%y %H:%M AEST"
+            )
+
+        except ValueError:
+            continue
+
+    # Fall back to the more general formatter if the
+    # bulletin format changes.
+    return format_aest_datetime(value)
+
 
 def retrieve():
     records, issued, errors = rb.collect()
@@ -516,7 +584,7 @@ st.divider()
 
 st.subheader("Rainfall Occurred")
 
-source_left, source_right = st.columns(2)
+source_left, source_middle, source_right = st.columns(3)
 
 source_left.metric(
     "Data source",
@@ -526,8 +594,19 @@ source_left.metric(
     ),
 )
 
+source_middle.metric(
+    "Latest bulletin issued",
+    format_aest_datetime(
+        latest_bulletin_time(
+            st.session_state.get(
+                "issued"
+            )
+        )
+    ),
+)
+
 source_right.metric(
-    "Retrieved",
+    "Retrieved by app",
     format_aest_datetime(
         st.session_state.get(
             "fetched_at"
@@ -628,24 +707,33 @@ if river_records:
         river_records
     )
 
-    info_left, info_right = st.columns(2)
+info_left, info_middle, info_right = st.columns(3)
 
-    info_left.metric(
-        "Data source",
+info_left.metric(
+    "Data source",
+    st.session_state.get(
+        "river_level_source",
+        "Unknown",
+    ),
+)
+
+info_middle.metric(
+    "Bulletin issued",
+    format_bom_issue_datetime(
         st.session_state.get(
-            "river_level_source",
-            "Unknown",
-        ),
-    )
+            "river_level_issued"
+        )
+    ),
+)
 
-    info_right.metric(
-        "Retrieved",
-        format_aest_datetime(
-            st.session_state.get(
-                "river_level_retrieved_at"
-            )
-        ),
-    )
+info_right.metric(
+    "Retrieved by app",
+    format_aest_datetime(
+        st.session_state.get(
+            "river_level_retrieved_at"
+        )
+    ),
+)
 
     st.dataframe(
         river_df,
