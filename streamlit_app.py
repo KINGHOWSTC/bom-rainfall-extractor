@@ -645,21 +645,26 @@ def populate_river_rows(
     """
     Populate the Current River Levels section.
 
-    Rows:
-        17–21
+    Template layout:
+        B17:B28 = Gauge numbers, prefilled
+        C17:C28 = Locations, prefilled
+        D17:D28 = Links, prefilled
+        E17:E28 = Observation Time
+        F17:F28 = Current River Level
+        J17:J28 = Rising/Falling/Steady
 
-    Columns populated:
-        E = Observation Time
-        F = Current River Level
-        G = Rising/Falling/Steady
-
-    Columns H:J remain untouched.
+    The function does not modify:
+        A = Risk Element
+        B = Gauges
+        C = Location
+        D = Link
+        G:I = Other template fields
     """
 
     row_lookup = gauge_row_lookup(
         worksheet,
         first_row=17,
-        last_row=21,
+        last_row=28,
     )
 
     for record in river_records:
@@ -675,28 +680,37 @@ def populate_river_rows(
             continue
 
         # E: Observation Time
-        worksheet.cell(
+        observation_time_cell = worksheet.cell(
             row=row_number,
             column=5,
-        ).value = excel_safe_value(
+        )
+
+        observation_time_cell.value = excel_safe_value(
             record.get("Observation Time")
         )
 
         # F: Current River Level
-        worksheet.cell(
+        river_level_cell = worksheet.cell(
             row=row_number,
             column=6,
-        ).value = excel_safe_value(
+        )
+
+        river_level_cell.value = excel_safe_value(
             record.get(
                 "Current River Level (m)"
             )
         )
 
-        # G: Rising/Falling/Steady
-        worksheet.cell(
+        # Keep the value numeric but display the unit.
+        river_level_cell.number_format = '0.00" m"'
+
+        # J: Rising/Falling/Steady
+        tendency_cell = worksheet.cell(
             row=row_number,
-            column=7,
-        ).value = excel_safe_value(
+            column=10,
+        )
+
+        tendency_cell.value = excel_safe_value(
             record.get(
                 "Rising/Falling/Steady"
             )
