@@ -618,38 +618,56 @@ if (
 if st.session_state.get("river_level_error"):
     st.warning(st.session_state.river_level_error)
 
-river_records = st.session_state.get("river_level_records", [])
+river_records = st.session_state.get(
+    "river_level_records",
+    [],
+)
+
 if river_records:
-    river_df = pd.DataFrame(river_records)
-info_left, info_right = st.columns(2)
+    river_df = pd.DataFrame(
+        river_records
+    )
 
-info_left.metric(
-    "Data source",
-    st.session_state.get(
-        "river_level_source",
-        "Unknown",
-    ),
-)
+    info_left, info_right = st.columns(2)
 
-info_right.metric(
-    "Retrieved",
-    format_aest_datetime(
+    info_left.metric(
+        "Data source",
         st.session_state.get(
-            "river_level_retrieved_at"
-        )
-    ),
-)
+            "river_level_source",
+            "Unknown",
+        ),
+    )
+
+    info_right.metric(
+        "Retrieved",
+        format_aest_datetime(
+            st.session_state.get(
+                "river_level_retrieved_at"
+            )
+        ),
+    )
 
     st.dataframe(
         river_df,
         hide_index=True,
         width="stretch",
         column_config={
-            "Current River Level (m)": st.column_config.NumberColumn(format="%.2f m"),
+            "Current River Level (m)": (
+                st.column_config.NumberColumn(
+                    format="%.2f m"
+                )
+            ),
         },
     )
-    
-    st.caption("Current River Level is adopted from Height (m). Rising/Falling/Steady is adopted from Tendency.")
+
+    st.caption(
+        "Current River Level is adopted from Height (m). "
+        "Rising/Falling/Steady is adopted from Tendency."
+    )
+else:
+    st.info(
+        "No current river-level records are available."
+    )
 
 st.divider()
 
