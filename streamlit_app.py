@@ -1452,18 +1452,21 @@ if river_records:
     )
 
     # Header + 12 gauge rows + horizontal-scroll allowance.
+
     river_table_height = (
-        42
-        + len(river_df) * 35
-        + 18
+    32
+    + len(river_df) * 35
     )
 
     st.dataframe(
         river_df,
         hide_index=True,
         width="stretch",
+        height=river_table_height,
         column_config={
-            "Gauge Number": st.column_config.TextColumn(),
+            "Gauge Number": (
+                st.column_config.TextColumn()
+            ),
             "Current River Level (m)": (
                 st.column_config.NumberColumn(
                     format="%.2f m"
@@ -1471,12 +1474,11 @@ if river_records:
             ),
         },
     )
-    
 
     st.caption(
         "Current River Level is adopted from Height (m). "
         "Rising/Falling/Steady is adopted from Tendency."
-    )
+    )    
 
 else:
     st.info(
