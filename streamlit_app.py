@@ -1367,6 +1367,62 @@ if river_records:
         river_records
     )
 
+    # Preserve six-character gauge numbers.
+    river_df["Gauge Number"] = (
+        river_df["Gauge Number"]
+        .astype(str)
+        .str.zfill(6)
+    )
+
+    # Enforce one row per gauge.
+    river_df = (
+        river_df
+        .drop_duplicates(
+            subset=["Gauge Number"],
+            keep="first",
+        )
+        .reset_index(drop=True)
+    )
+
+    river_gauge_order = [
+        "540065",
+        "540062",
+        "540057",
+        "540387",
+        "540180",
+        "540157",
+        "540388",
+        "540147",
+        "540504",
+        "040836",
+        "540250",
+        "040831",
+    ]
+
+    river_df["Gauge Number"] = pd.Categorical(
+        river_df["Gauge Number"],
+        categories=river_gauge_order,
+        ordered=True,
+    )
+
+    river_df = (
+        river_df
+        .sort_values("Gauge Number")
+        .reset_index(drop=True)
+    )
+
+    unique_river_gauges = len(
+        river_df[
+            "Gauge Number"
+        ].dropna().unique()
+    )
+
+    if unique_river_gauges != 12:
+        st.warning(
+            f"Expected 12 unique river gauges but received "
+            f"{unique_river_gauges}."
+        )
+
     info_left, info_middle, info_right = st.columns(3)
 
     info_left.metric(
@@ -1395,8 +1451,12 @@ if river_records:
         ),
     )
 
-    # Allow enough vertical space for all gauges plus the header.
-    river_table_height = 45 + (len(river_df) * 37)
+    # Header + 12 gauge rows + horizontal-scroll allowance.
+    river_table_height = (
+        42
+        + len(river_df) * 35
+        + 18
+    )
 
     st.dataframe(
         river_df,
