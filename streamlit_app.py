@@ -1516,8 +1516,6 @@ st.dataframe(
                 width="large",
             )
         ),
-            )
-        ),
     },
 )
 
@@ -1547,25 +1545,31 @@ if daily_warning:
 
 if daily_column_name == "Past 24 hours (mm)":
     st.caption(
-        "Past 3 hours and Past 6 hours are rolling totals calculated "
-        "from the latest hourly BoM readings. Missing hourly readings "
-        "are treated as 0 and flagged in the warning column. "
-        "Current rainfall period is the accumulating BoM value since "
-        "9 am. Past 2 days combines the current period with the "
-        "immediately preceding completed 24-hour period."
+        "Past 3 hours and Past 6 hours are rolling totals "
+        "calculated from the latest hourly BoM readings. "
+        "Missing hourly readings are treated as 0 and flagged "
+        "in the Data warning column. Past 24 hours is the latest "
+        "completed BoM daily period ending at 9 am. Past 2 days "
+        "is the sum of the latest two completed daily periods. "
         "Missing daily observations are not treated as 0."
     )
+
 else:
     st.caption(
         "Past 3 hours and Past 6 hours are rolling totals "
         "calculated from the latest hourly BoM readings. "
         "Missing hourly readings are treated as 0 and flagged "
-        "in the warning column. Current rainfall period is the "
-        "accumulating BoM value since 9 am. Past 2 days combines "
-        "the current period with the immediately preceding "
-        "completed 24-hour period. Missing daily observations "
-        "are not treated as 0."
+        "in the Data warning column. Current rainfall period is "
+        "the accumulating BoM value since 9 am. Past 2 days "
+        "combines the current period with the immediately "
+        "preceding completed 24-hour period. Missing daily "
+        "observations are not treated as 0."
     )
+
+st.divider()
+
+st.subheader("Current River Levels")
+
 st.divider()
 
 st.subheader("Current River Levels")
