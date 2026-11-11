@@ -592,9 +592,6 @@ def latest_table(df):
         }
     )
 
-
-def rainfall_source_label():
-
 def rainfall_source_label():
     """
     Summarise which retrieval method supplied the rainfall products.
