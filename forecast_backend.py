@@ -1,157 +1,195 @@
 """
-Elders Weather cumulative rainfall forecast scraper.
+BoM cumulative rainfall forecast backend.
 
-Cumulative periods:
-- 1 Day Forecast = Today + Tomorrow
-- 3 Day Forecast = Today through Today + 3 days
-- 5 Day Forecast = Today through Today + 5 days
+Data source:
+    BoM anonymous FTP:
+    /anon/gen/fwo/IDQ11295.xml
+
+Project-to-BoM forecast mapping:
+    Moogerah     -> Boonah
+    Warrill View -> Boonah
+    Mount Walker -> Laidley
+    Rosewood     -> Ipswich
+    Lyons        -> Ipswich
+    Ipswich      -> Ipswich
+
+Cumulative periods are retained from the previous Elders workflow:
+    1 Day Forecast = Today + Tomorrow
+    3 Day Forecast = Today through Today + 3 days
+    5 Day Forecast = Today through Today + 5 days
+
+Forecast rainfall ranges are stored against actual calendar dates.
+If the latest BoM XML omits today's precipitation range, a previously
+cached valid forecast for the same location and date is retained.
 """
 
 from __future__ import annotations
 
-import re
-import time
+from copy import deepcopy
 from datetime import date, datetime, timedelta
+from ftplib import FTP, all_errors
+from io import BytesIO
+import json
+from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
-import requests
-from bs4 import BeautifulSoup
+
+# =========================================================
+# BoM FTP configuration
+# =========================================================
+
+FTP_HOST = "ftp.bom.gov.au"
+FTP_DIRECTORY = "/anon/gen/fwo"
+FTP_FILENAME = "IDQ11295.xml"
+FTP_TIMEOUT = 30
+
+BRISBANE_TIMEZONE = ZoneInfo(
+    "Australia/Brisbane"
+)
+
+CACHE_PATH = (
+    Path(__file__).parent
+    / "data"
+    / "bom_forecast_cache.json"
+)
 
 
-FORECASTS = [
+# =========================================================
+# Fixed project-to-BoM forecast mapping
+# =========================================================
+
+FORECAST_LOCATION_MAP = [
     {
         "station_number": "040135",
         "location": "Moogerah",
-        "slug": "moogerah",
+        "bom_location": "Boonah",
+        "bom_aac": "QLD_PT045",
     },
     {
         "station_number": "540387",
         "location": "Warrill View",
-        "slug": "warrill-view",
+        "bom_location": "Boonah",
+        "bom_aac": "QLD_PT045",
     },
     {
         "station_number": "540574",
         "location": "Mount Walker",
-        "slug": "mount-walker",
+        "bom_location": "Laidley",
+        "bom_aac": "QLD_PT113",
     },
     {
         "station_number": "540503",
         "location": "Rosewood",
-        "slug": "rosewood",
+        "bom_location": "Ipswich",
+        "bom_aac": "QLD_PT014",
     },
     {
         "station_number": "040793",
         "location": "Lyons",
-        "slug": "lyons",
+        "bom_location": "Ipswich",
+        "bom_aac": "QLD_PT014",
     },
     {
         "station_number": "540250",
         "location": "Ipswich",
-        "slug": "ipswich",
+        "bom_location": "Ipswich",
+        "bom_aac": "QLD_PT014",
     },
 ]
 
-
-BASE_URL = "https://eldersweather.com.au/forecast/qld/{slug}"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/124 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml",
-    "Accept-Language": "en-AU,en;q=0.9",
+REQUIRED_AACS = {
+    item["bom_aac"]
+    for item in FORECAST_LOCATION_MAP
 }
 
-RAIN_RE = re.compile(
-    r"^(?:\d+(?:\.\d+)?\s*(?:-|–|to)\s*)?"
-    r"\d+(?:\.\d+)?\s*mm$",
-    re.IGNORECASE,
-)
 
-NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+# =========================================================
+# Rainfall-range parsing
+# =========================================================
+
+NUMBER_PATTERN = re.compile(
+    r"\d+(?:\.\d+)?"
+)
 
 
 class ForecastError(RuntimeError):
-    pass
+    """Raised when BoM forecast retrieval or parsing fails."""
 
 
-def clean(value: str) -> str:
+def clean(value) -> str:
+    if value is None:
+        return ""
+
     return re.sub(
         r"\s+",
         " ",
-        value.replace("\xa0", " "),
+        str(value).replace(
+            "\xa0",
+            " ",
+        ),
     ).strip()
 
 
-def fetch_forecast_html(slug: str) -> str:
-    url = BASE_URL.format(slug=slug)
+def local_name(tag: str) -> str:
+    """
+    Return an XML tag name without its namespace.
+    """
 
-    response = requests.get(
-        url,
-        headers=HEADERS,
-        timeout=30,
-    )
-
-    if response.status_code == 403:
-        raise ForecastError(
-            "Elders Weather blocked the request (HTTP 403)."
-        )
-
-    response.raise_for_status()
-
-    if "Rain Amount" not in response.text:
-        raise ForecastError(
-            "The page did not contain a Rain Amount row."
-        )
-
-    return response.text
+    return tag.rsplit(
+        "}",
+        1,
+    )[-1]
 
 
-def parse_header_date(
-    text: str,
-    today: date,
-) -> date | None:
-    text = clean(text)
+def parse_datetime(value):
+    """
+    Parse BoM ISO timestamps.
 
-    if text.casefold() == "today":
-        return today
+    Returns None when the supplied value is blank or invalid.
+    """
 
-    match = re.search(
-        r"([A-Z][a-z]{2})\s+(\d{1,2})",
-        text,
-    )
-
-    if not match:
+    if not value:
         return None
 
-    parsed = datetime.strptime(
-        f"{match.group(1)} {match.group(2)} {today.year}",
-        "%b %d %Y",
-    ).date()
+    try:
+        return datetime.fromisoformat(
+            str(value).replace(
+                "Z",
+                "+00:00",
+            )
+        )
 
-    # Allow forecast dates to cross from December into January.
-    if parsed < today - timedelta(days=180):
-        parsed = parsed.replace(year=today.year + 1)
-
-    elif parsed > today + timedelta(days=180):
-        parsed = parsed.replace(year=today.year - 1)
-
-    return parsed
+    except ValueError:
+        return None
 
 
-def rain_range(value: str) -> tuple[float, float]:
+def parse_rain_range(
+    value,
+) -> tuple[float | None, float | None]:
     """
-    Convert a forecast such as:
-        2 - 5 mm
+    Parse rainfall ranges such as:
+
+        0 to 8 mm
+        2 - 10 mm
         3 mm
 
-    into lower and upper numerical bounds.
+    Missing fields return:
+
+        (None, None)
     """
+
+    text = clean(value)
+
+    if not text:
+        return None, None
 
     numbers = [
         float(number)
-        for number in NUMBER_RE.findall(value)
+        for number in NUMBER_PATTERN.findall(
+            text
+        )
     ]
 
     if len(numbers) == 1:
@@ -160,241 +198,111 @@ def rain_range(value: str) -> tuple[float, float]:
     if len(numbers) == 2:
         return numbers[0], numbers[1]
 
-    raise ForecastError(
-        f"Could not interpret Rain Amount value '{value}'."
-    )
+    return None, None
 
 
 def format_mm(value: float) -> str:
     """
-    Display whole numbers without decimal places while preserving
-    decimal values when required.
+    Format rainfall without unnecessary trailing zeroes.
     """
-
-    return f"{value:.2f}".rstrip("0").rstrip(".")
-
-
-def cumulative_rain_amount(
-    amounts: list[str],
-    final_offset: int,
-) -> str:
-    """
-    Sum daily forecast ranges from Today through final_offset.
-
-    final_offset = 1:
-        Today + Tomorrow
-
-    final_offset = 3:
-        Today + Tomorrow + Day 2 + Day 3
-
-    final_offset = 5:
-        Today through Day 5
-    """
-
-    required_amounts = amounts[: final_offset + 1]
-
-    required_count = final_offset + 1
-
-    if len(required_amounts) != required_count:
-        raise ForecastError(
-            f"Expected {required_count} daily values for the "
-            f"cumulative forecast, but found "
-            f"{len(required_amounts)}."
-        )
-
-    if any(not value for value in required_amounts):
-        raise ForecastError(
-            "One or more daily Rain Amount values are missing."
-        )
-
-    bounds = [
-        rain_range(value)
-        for value in required_amounts
-    ]
-
-    lower_total = sum(
-        lower
-        for lower, upper in bounds
-    )
-
-    upper_total = sum(
-        upper
-        for lower, upper in bounds
-    )
-
-    if lower_total == upper_total:
-        return f"{format_mm(lower_total)} mm"
 
     return (
-        f"{format_mm(lower_total)} - "
-        f"{format_mm(upper_total)} mm"
+        f"{float(value):.2f}"
+        .rstrip("0")
+        .rstrip(".")
     )
 
 
-def parse_forecast(
-    html: str,
-    expected_location: str,
-    today: date | None = None,
-) -> dict:
-    today = today or datetime.now(
-        ZoneInfo("Australia/Brisbane")
-    ).date()
+def format_range(
+    minimum: float,
+    maximum: float,
+) -> str:
+    """
+    Convert numerical bounds into the existing app format.
+    """
 
-    soup = BeautifulSoup(html, "lxml")
+    if minimum == maximum:
+        return f"{format_mm(minimum)} mm"
 
-    rain_row = None
+    return (
+        f"{format_mm(minimum)} - "
+        f"{format_mm(maximum)} mm"
+    )
 
-    for table_row in soup.find_all("tr"):
-        cells = table_row.find_all(
-            ["th", "td"],
-            recursive=False,
-        )
 
-        if not cells:
+# =========================================================
+# XML utility functions
+# =========================================================
+
+def first_text_by_name(
+    root,
+    name,
+):
+    """
+    Find the first XML element with the specified local name.
+    """
+
+    for element in root.iter():
+        if local_name(element.tag) != name:
             continue
 
-        row_name = clean(
-            cells[0].get_text(" ", strip=True)
-        )
+        text = clean(element.text)
 
-        if row_name.casefold() == "rain amount":
-            rain_row = table_row
-            break
+        if text:
+            return text
 
-    if rain_row is None:
-        raise ForecastError(
-            f"{expected_location}: Rain Amount row not found."
-        )
-
-    rain_cells = rain_row.find_all(
-        ["th", "td"],
-        recursive=False,
-    )[1:]
-
-    amounts = [
-        clean(cell.get_text(" ", strip=True))
-        for cell in rain_cells
-    ]
-
-    # Today through Day 5 requires six daily forecast values.
-    if len(amounts) < 6:
-        raise ForecastError(
-            f"{expected_location}: expected at least 6 "
-            f"daily Rain Amount values, but found "
-            f"{len(amounts)}."
-        )
-
-    for amount in amounts:
-        if amount and not RAIN_RE.match(amount):
-            raise ForecastError(
-                f"{expected_location}: unexpected "
-                f"Rain Amount value '{amount}'."
-            )
-
-    # Validate forecast date ordering when suitable headers exist.
-    table = rain_row.find_parent("table")
-    header_labels = []
-
-    if table:
-        first_row = table.find("tr")
-
-        if first_row:
-            header_labels = [
-                clean(cell.get_text(" ", strip=True))
-                for cell in first_row.find_all(
-                    ["th", "td"],
-                    recursive=False,
-                )[1:]
-            ]
-
-    header_dates = [
-        parse_header_date(label, today)
-        for label in header_labels
-    ]
-
-    if (
-        len(header_dates) >= 6
-        and header_dates[0] == today
-    ):
-        for offset in range(6):
-            expected_date = today + timedelta(days=offset)
-
-            if header_dates[offset] != expected_date:
-                raise ForecastError(
-                    f"{expected_location}: forecast column "
-                    f"{offset} was dated "
-                    f"{header_dates[offset]}, expected "
-                    f"{expected_date}."
-                )
-
-    return {
-        # Today + Tomorrow
-        "1 Day Forecast": cumulative_rain_amount(
-            amounts,
-            final_offset=1,
-        ),
-
-        # Today + Tomorrow + Day 2 + Day 3
-        "3 Day Forecast": cumulative_rain_amount(
-            amounts,
-            final_offset=3,
-        ),
-
-        # Today through Day 5
-        "5 Day Forecast": cumulative_rain_amount(
-            amounts,
-            final_offset=5,
-        ),
-    }
+    return None
 
 
-def collect_forecasts(
-    html_by_slug: dict[str, str] | None = None,
+def direct_children_by_name(
+    parent,
+    name,
 ):
-    rows = []
-    errors = []
+    """
+    Return direct child elements matching a local XML tag name.
+    """
 
-    html_by_slug = html_by_slug or {}
+    return [
+        child
+        for child in list(parent)
+        if local_name(child.tag) == name
+    ]
 
-    for index, item in enumerate(FORECASTS):
-        try:
-            if item["slug"] in html_by_slug:
-                html = html_by_slug[item["slug"]]
 
-            else:
-                # Avoid sending all requests at exactly the same time.
-                if index:
-                    time.sleep(0.75)
+def find_child_by_type(
+    parent,
+    element_name,
+    type_name,
+):
+    """
+    Find a direct child such as:
 
-                html = fetch_forecast_html(
-                    item["slug"]
-                )
+        <element type="precipitation_range">
+        <text type="probability_of_precipitation">
+    """
 
-            forecast_values = parse_forecast(
-                html,
-                item["location"],
-            )
+    for child in direct_children_by_name(
+        parent,
+        element_name,
+    ):
+        if child.get("type") == type_name:
+            return child
 
-            rows.append({
-                "Station Number": item["station_number"],
-                "Location": item["location"],
-                **forecast_values,
-            })
+    return None
 
-        except (
-            ForecastError,
-            requests.RequestException,
-        ) as exc:
-            errors.append(
-                f"{item['location']}: {exc}"
-            )
 
-            rows.append({
-                "Station Number": item["station_number"],
-                "Location": item["location"],
-                "1 Day Forecast": None,
-                "3 Day Forecast": None,
-                "5 Day Forecast": None,
-            })
+# =========================================================
+# FTP retrieval
+# =========================================================
 
-    return rows, errors
+def download_forecast_xml() -> bytes:
+    """
+    Download IDQ11295.xml from BoM anonymous FTP.
+    """
+
+    buffer = BytesIO()
+
+    try:
+        with FTP(
+            host=FTP_HOST,
+            timeout=FTP_
