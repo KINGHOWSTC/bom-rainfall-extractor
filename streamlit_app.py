@@ -284,7 +284,7 @@ def latest_table(df):
     )
 
     # =====================================================
-    # Completed 24-hour rainfall periods
+    # Completed daily rainfall data
     # =====================================================
 
     daily_data = (
@@ -350,7 +350,7 @@ def latest_table(df):
     )
 
     # =====================================================
-    # Current incomplete rainfall period since 9 am
+    # Current rainfall period since 9 am
     # =====================================================
 
     since_9am_data = (
@@ -428,8 +428,7 @@ def latest_table(df):
         )
     )
 
-    # Missing aggregation fields can occur when a station has
-    # no hourly records at all. Add them before warning logic.
+    # Ensure count columns are available for every station.
     count_columns = [
         "3-hour readings available",
         "3-hour slots found",
@@ -449,6 +448,18 @@ def latest_table(df):
             .fillna(0)
             .astype(int)
         )
+
+    # Ensure the internal daily columns exist even if no
+    # matching daily record was returned for any station.
+    internal_daily_columns = [
+        "_latest_completed_day",
+        "_latest_two_completed_days",
+        "_current_period",
+    ]
+
+    for column in internal_daily_columns:
+        if column not in table.columns:
+            table[column] = float("nan")
 
     # =====================================================
     # Dynamic daily rainfall values
@@ -479,9 +490,7 @@ def latest_table(df):
                 row["_current_period"]
                 + row["_latest_completed_day"]
                 if (
-                    pd.notna(
-                        row["_current_period"]
-                    )
+                    pd.notna(row["_current_period"])
                     and pd.notna(
                         row["_latest_completed_day"]
                     )
@@ -491,47 +500,61 @@ def latest_table(df):
             axis=1,
         )
 
-# =====================================================
-# Data availability warnings
-# =====================================================
+    # =====================================================
+    # Data availability warnings
+    # =====================================================
 
-def build_data_warning(row):
+    def build_data_warning(row):
         warnings = []
 
         available_3 = int(
             row["3-hour readings available"]
         )
 
+        slots_3 = int(
+            row["3-hour slots found"]
+        )
+
         available_6 = int(
             row["6-hour readings available"]
         )
 
-        # Hourly observations are treated as zero when missing,
-        # but the reduced observation count is reported.
-        if (
-            available_3 < 3
-            and available_6 < 6
-        ):
+        slots_6 = int(
+            row["6-hour slots found"]
+        )
+
+        # Only show hourly availability warnings where the
+        # hourly bulletin supplied enough hourly slots to
+        # calculate the relevant rolling period.
+        incomplete_3 = (
+            slots_3 < 3
+            or available_3 < 3
+        )
+
+        incomplete_6 = (
+            slots_6 < 6
+            or available_6 < 6
+        )
+
+        if incomplete_3 and incomplete_6:
             warnings.append(
                 f"Only {available_3}/3 & "
                 f"{available_6}/6 hourly readings available "
                 "for 3-hour & 6-hour totals"
             )
 
-        elif available_3 < 3:
+        elif incomplete_3:
             warnings.append(
                 f"Only {available_3}/3 hourly readings "
                 "available for 3-hour total"
             )
 
-        elif available_6 < 6:
+        elif incomplete_6:
             warnings.append(
                 f"Only {available_6}/6 hourly readings "
                 "available for 6-hour total"
             )
 
-        # Daily observations remain missing. They are not
-        # treated as zero.
         if daily_mode == "completed":
             if pd.isna(
                 row.get("Past 24 hours (mm)")
@@ -579,23 +602,6 @@ def build_data_warning(row):
         axis=1,
     )
 
-# =====================================================
-# Remove internal calculation columns
-# =====================================================
- 
-table = table.drop(
-columns=[
-"_latest_completed_day",
-"_latest_two_completed_days",
-"_current_period",
-"3-hour readings available",
-"3-hour slots found",
-"6-hour readings available",
-"6-hour slots found",
-],
-errors="ignore",
-)
-
     # =====================================================
     # Remove internal calculation columns
     # =====================================================
@@ -614,7 +620,7 @@ errors="ignore",
     )
 
     # =====================================================
-    # Apply the required display order
+    # Apply the configured location order
     # =====================================================
 
     table["station"] = pd.Categorical(
