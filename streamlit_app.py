@@ -491,93 +491,121 @@ def latest_table(df):
             axis=1,
         )
 
-    # =====================================================
-    # Hourly reading availability warnings
-    # =====================================================
-        def build_data_warning(row):
-        warnings = []
+# =====================================================
+# Data availability warnings
+# =====================================================
+ 
+def build_data_warning(row):
+warnings = []
+ 
+available_3 = int(
+row["3-hour readings available"]
+)
+ 
+available_6 = int(
+row["6-hour readings available"]
+)
+ 
+# Hourly observations are treated as zero when missing,
+# but the reduced observation count is reported.
+if (
+available_3 < 3
+and available_6 < 6
+):
+warnings.append(
+f"Only {available_3}/3 & "
+f"{available_6}/6 hourly readings available "
+"for 3-hour & 6-hour totals"
+)
+ 
+elif available_3 < 3:
+warnings.append(
+f"Only {available_3}/3 hourly readings "
+"available for 3-hour total"
+)
+ 
+elif available_6 < 6:
+warnings.append(
+f"Only {available_6}/6 hourly readings "
+"available for 6-hour total"
+)
+ 
+# Daily observations remain missing. They are not
+# treated as zero.
+if daily_mode == "completed":
+if pd.isna(
+row.get("Past 24 hours (mm)")
+):
+warnings.append(
+"Past 24-hour observation unavailable"
+)
+ 
+if pd.isna(
+row.get("Past 2 days (mm)")
+):
+warnings.append(
+"Past 2-day total incomplete"
+)
+ 
+else:
+if pd.isna(
+row.get(
+"Current rainfall period (mm)"
+)
+):
+warnings.append(
+"Current rainfall-period observation "
+"unavailable"
+)
+ 
+if pd.isna(
+row.get("Past 2 days (mm)")
+):
+warnings.append(
+"Past 2-day total incomplete"
+)
+ 
+if not warnings:
+return ""
+ 
+return (
+"Warning: "
++ "; ".join(warnings)
++ "."
+)
+ 
+table["Data warning"] = table.apply(
+build_data_warning,
+axis=1,
+)
+Placement
 
-        available_3 = int(
-            row["3-hour readings available"]
-        )
+This block must be inside latest_table(). The indentation levels are:
 
-        available_6 = int(
-            row["6-hour readings available"]
-        )
+Plain Text
+4 spaces: comments, nested function definition, table.apply(...)
+8 spaces: statements directly inside build_data_warning()
+12 spaces: statements inside if/elif blocks
 
-        if (
-            available_3 < 3
-            and available_6 < 6
-        ):
-            warnings.append(
-                f"Only {available_3}/3 & "
-                f"{available_6}/6 hourly readings available "
-                "for 3-hour & 6-hour totals"
-            )
+Immediately after this block, your cleanup section should begin at the same four-space indentation:
 
-        elif available_3 < 3:
-            warnings.append(
-                f"Only {available_3}/3 hourly readings "
-                "available for 3-hour total"
-            )
-
-        elif available_6 < 6:
-            warnings.append(
-                f"Only {available_6}/6 hourly readings "
-                "available for 6-hour total"
-            )
-
-        if daily_mode == "completed":
-            if pd.isna(
-                row.get(
-                    "Past 24 hours (mm)"
-                )
-            ):
-                warnings.append(
-                    "Past 24-hour observation unavailable"
-                )
-
-            if pd.isna(
-                row.get(
-                    "Past 2 days (mm)"
-                )
-            ):
-                warnings.append(
-                    "Past 2-day total incomplete"
-                )
-
-        else:
-            if pd.isna(
-                row.get(
-                    "Current rainfall period (mm)"
-                )
-            ):
-                warnings.append(
-                    "Current rainfall-period observation unavailable"
-                )
-
-            if pd.isna(
-                row.get(
-                    "Past 2 days (mm)"
-                )
-            ):
-                warnings.append(
-                    "Past 2-day total incomplete"
-                )
-
-        if not warnings:
-            return ""
-
-        return (
-            "Warning: "
-            + "; ".join(warnings)
-            + "."
-        )
-
-    table["Data warning"] = table.apply(
-        build_data_warning,
-        axis=1,
-    )
+Python
+# =====================================================
+# Remove internal calculation columns
+# =====================================================
+ 
+table = table.drop(
+columns=[
+"_latest_completed_day",
+"_latest_two_completed_days",
+"_current_period",
+"3-hour readings available",
+"3-hour slots found",
+"6-hour readings available",
+"6-hour slots found",
+],
+errors="ignore",
+)
 
     # =====================================================
     # Remove internal calculation columns
