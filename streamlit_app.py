@@ -494,7 +494,9 @@ def latest_table(df):
     # =====================================================
     # Hourly reading availability warnings
     # =====================================================
-    def build_hourly_warning(row):
+        def build_data_warning(row):
+        warnings = []
+
         available_3 = int(
             row["3-hour readings available"]
         )
@@ -503,32 +505,77 @@ def latest_table(df):
             row["6-hour readings available"]
         )
 
-        incomplete_3 = available_3 < 3
-        incomplete_6 = available_6 < 6
-
-        if incomplete_3 and incomplete_6:
-            return (
-                f"Warning: Only {available_3}/3 & "
+        if (
+            available_3 < 3
+            and available_6 < 6
+        ):
+            warnings.append(
+                f"Only {available_3}/3 & "
                 f"{available_6}/6 hourly readings available "
-                "for 3-hour & 6-hour totals."
+                "for 3-hour & 6-hour totals"
             )
 
-        if incomplete_3:
-            return (
-                f"Warning: Only {available_3}/3 hourly readings "
-                "available for 3-hour total."
+        elif available_3 < 3:
+            warnings.append(
+                f"Only {available_3}/3 hourly readings "
+                "available for 3-hour total"
             )
 
-        if incomplete_6:
-            return (
-                f"Warning: Only {available_6}/6 hourly readings "
-                "available for 6-hour total."
+        elif available_6 < 6:
+            warnings.append(
+                f"Only {available_6}/6 hourly readings "
+                "available for 6-hour total"
             )
 
-        return ""
+        if daily_mode == "completed":
+            if pd.isna(
+                row.get(
+                    "Past 24 hours (mm)"
+                )
+            ):
+                warnings.append(
+                    "Past 24-hour observation unavailable"
+                )
 
-    table["Hourly data warning"] = table.apply(
-        build_hourly_warning,
+            if pd.isna(
+                row.get(
+                    "Past 2 days (mm)"
+                )
+            ):
+                warnings.append(
+                    "Past 2-day total incomplete"
+                )
+
+        else:
+            if pd.isna(
+                row.get(
+                    "Current rainfall period (mm)"
+                )
+            ):
+                warnings.append(
+                    "Current rainfall-period observation unavailable"
+                )
+
+            if pd.isna(
+                row.get(
+                    "Past 2 days (mm)"
+                )
+            ):
+                warnings.append(
+                    "Past 2-day total incomplete"
+                )
+
+        if not warnings:
+            return ""
+
+        return (
+            "Warning: "
+            + "; ".join(warnings)
+            + "."
+        )
+
+    table["Data warning"] = table.apply(
+        build_data_warning,
         axis=1,
     )
 
