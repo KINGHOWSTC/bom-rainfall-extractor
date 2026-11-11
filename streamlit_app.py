@@ -1510,28 +1510,30 @@ st.dataframe(
                 format="%.1f"
             )
         ),
-        "Hourly data warning": (
+        "Data warning": (
             st.column_config.TextColumn(
-                "Hourly data warning",
+                "Data warning",
                 width="large",
+            )
+        ),
             )
         ),
     },
 )
 
-stations_with_hourly_warnings = (
+stations_with_data_warnings = (
     rainfall_summary[
         rainfall_summary[
-            "Hourly data warning"
+            "Data warning"
         ].fillna("").ne("")
     ]
 )
 
-if not stations_with_hourly_warnings.empty:
+if not stations_with_data_warnings.empty:
     st.warning(
-        f"Incomplete hourly data for "
-        f"{len(stations_with_hourly_warnings)} station(s). "
-        "See the warning column."
+        f"Incomplete rainfall data for "
+        f"{len(stations_with_data_warnings)} station(s). "
+        "See the Data warning column."
     )
 
 daily_warning = rainfall_daily_warning(
