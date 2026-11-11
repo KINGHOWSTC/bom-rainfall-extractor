@@ -228,12 +228,12 @@ def latest_table(df):
   **                    if len(values**== 3
                         else**loat("nan")
                     )**                ),
-              **"3-hour readings available": (
+                "3-hour readings available": (
   **                "rainfall_mm",
   **                lambda values: in**
                         values.n**na().sum()
                     ),**               ),
-               **3-hour slots found": (
+                 3-hour slots found": (
           **        "rainfall_mm",
           **        "size",
                 )**            }
