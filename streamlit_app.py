@@ -176,12 +176,10 @@ def latest_table(df):
         "station",
     ]
 
-    daily_mode = rainfall_daily_mode(
-        df
-    )
+    daily_mode = rainfall_daily_mode(df)
 
     # =====================================================
-    # Hourly rainfall source
+    # Hourly rainfall data
     # =====================================================
 
     hourly_data = (
@@ -196,10 +194,7 @@ def latest_table(df):
     )
 
     # =====================================================
-    # Rolling 3-hour rainfall
-    #
-    # Missing hourly values are treated as zero for the sum,
-    # but availability is counted and reported separately.
+    # Rolling 3-hour totals from hourly records
     # =====================================================
 
     latest_3_hour_rows = (
@@ -221,84 +216,94 @@ def latest_table(df):
         )
         .agg(
             **{
-                "Past **hours (mm)": (
-                  **"rainfall_mm",
-                  **lambda values: (
-                **      values.fillna(0.0).sum()
-  **                    if len(values**== 3
-                        else**loat("nan")
-                    )**                ),
+                "Past 3 hours (mm)": (
+                    "rainfall_mm",
+                    lambda values: (
+                        values.fillna(0.0).sum()
+                        if len(values) == 3
+                        else float("nan")
+                    ),
+                ),
                 "3-hour readings available": (
-  **                "rainfall_mm",
-  **                lambda values: in**
-                        values.n**na().sum()
-                    ),**               ),
-                 3-hour slots found": (
-          **        "rainfall_mm",
-          **        "size",
-                )**            }
-        )
-    )
-
-  **# ===============================**====================
-    # Rollin**6-hour rainfall
-    #
-    # Missi** hourly values are treated as zer**for the sum,
-    # but availabili** is counted and reported separate**.
-    # =========================**==========================
-
-    l**est_6_hour_rows = (
-        hourl**data
-        .groupby(
-          **group_columns,
-            observ**=True,
-            group_keys=Fal**,
-        )
-        .tail(6)
-    **
-    past_6_hours = (
-        lat**t_6_hour_rows
-        .groupby(
- **         group_columns,
-         ** observed=True,
-            as_in**x=False,
-        )
-        .agg(
-**          **{
-                "Pa** 6 hours (mm)": (
-               **   "rainfall_mm",
-               **   lambda values: (
-             **         values.fillna(0.0).sum()**                       if len(val**s) == 6
-                        e**e float("nan")
-                  **),
+                    "rainfall_mm",
+                    lambda values: int(
+                        values.notna().sum()
+                    ),
                 ),
-           **   "6-hour readings available": (**                   "rainfall_mm",**                   lambda values:**nt(
-                        value**notna().sum()
-                   **,
+                "3-hour slots found": (
+                    "rainfall_mm",
+                    "size",
                 ),
-            **  "6-hour slots found": (
-       **           "rainfall_mm",
-       **           "size",
-              **),
             }
         )
     )
-**   # ============================**=======================
-    # Com**eted 24-hour rainfall periods
-   ** ================================**===================
 
-    daily_da** = (
+    # =====================================================
+    # Rolling 6-hour totals from hourly records
+    # =====================================================
+
+    latest_6_hour_rows = (
+        hourly_data
+        .groupby(
+            group_columns,
+            observed=True,
+            group_keys=False,
+        )
+        .tail(6)
+    )
+
+    past_6_hours = (
+        latest_6_hour_rows
+        .groupby(
+            group_columns,
+            observed=True,
+            as_index=False,
+        )
+        .agg(
+            **{
+                "Past 6 hours (mm)": (
+                    "rainfall_mm",
+                    lambda values: (
+                        values.fillna(0.0).sum()
+                        if len(values) == 6
+                        else float("nan")
+                    ),
+                ),
+                "6-hour readings available": (
+                    "rainfall_mm",
+                    lambda values: int(
+                        values.notna().sum()
+                    ),
+                ),
+                "6-hour slots found": (
+                    "rainfall_mm",
+                    "size",
+                ),
+            }
+        )
+    )
+
+    # =====================================================
+    # Completed 24-hour rainfall periods
+    # =====================================================
+
+    daily_data = (
         df[df["series"] == "24h"]
-        .sort_values("period_**d")
+        .sort_values(
+            [
+                "station_id",
+                "period_end",
+            ]
+        )
         .copy()
     )
 
-    la**st_completed_day = (
-        dail**data
+    latest_completed_day = (
+        daily_data
         .groupby(
-          **group_columns,
-            observ**=True,
-            group_keys=Fal**,
+            group_columns,
+            observed=True,
+            group_keys=False,
         )
         .tail(1)[
             [
@@ -308,117 +313,149 @@ def latest_table(df):
             ]
         ]
         .rename(
-**          columns={
-             ** "rainfall_mm": (
-               **   "_latest_completed_day"
-      **        ),
+            columns={
+                "rainfall_mm": "_latest_completed_day",
             }
-        **    )
-
-    latest_two_completed_d**s = (
-        daily_data
-        **roupby(
-            group_columns**            observed=True,
-      **    group_keys=False,
-        )
- **     .tail(2)
-        .groupby(
- **         group_columns,
-         ** observed=True,
-            as_in**x=False,
-        )
-        .agg(
-**          **{
-                "_l**est_two_completed_days": (
-      **            "rainfall_mm",
-      **            lambda values: (
-    **                  values.sum()
-  **                    if (
-        **                  len(values) == **                            and v**ues.notna().sum() == 2
-          **            )
-                   **   else float("nan")
-            **      ),
-                )
-      **    }
         )
     )
 
-    # ====**=================================**============
-    # Current incomp**te rainfall period since 9 am
-   ** ================================**===================
+    latest_two_completed_days = (
+        daily_data
+        .groupby(
+            group_columns,
+            observed=True,
+            group_keys=False,
+        )
+        .tail(2)
+        .groupby(
+            group_columns,
+            observed=True,
+            as_index=False,
+        )
+        .agg(
+            **{
+                "_latest_two_completed_days": (
+                    "rainfall_mm",
+                    lambda values: (
+                        values.sum()
+                        if (
+                            len(values) == 2
+                            and values.notna().sum() == 2
+                        )
+                        else float("nan")
+                    ),
+                )
+            }
+        )
+    )
 
-    since_9a**data = (
+    # =====================================================
+    # Current incomplete rainfall period since 9 am
+    # =====================================================
+
+    since_9am_data = (
         df[df["series"] == "since_9am"]
-        .sort_value**"period_end")
+        .sort_values(
+            [
+                "station_id",
+                "period_end",
+            ]
+        )
         .copy()
-   **
+    )
 
     current_period = (
-        **nce_9am_data
+        since_9am_data
         .groupby(
-  **        group_columns,
-          **observed=True,
-            group_**ys=False,
+            group_columns,
+            observed=True,
+            group_keys=False,
         )
-        .tail**)[
+        .tail(1)[
             [
                 "station_id",
                 "station",
                 "rainfall_mm",
             ]
         ]
-        .**name(
+        .rename(
             columns={
-     **         "rainfall_mm": "_current**eriod",
+                "rainfall_mm": "_current_period",
             }
         )
- ** )
+    )
 
-    # =======================**============================
-    **Create one row for every configur** station
-    # ==================**=================================**    table = pd.DataFrame(
-       **
+    # =====================================================
+    # Create one row for every configured station
+    # =====================================================
+
+    table = pd.DataFrame(
+        [
             {
                 "station_id": station["id"],
                 "station": station["label"],
             }
             for station in rb.STATIONS
         ]
-    )**    table = (
+    )
+
+    table = (
         table
-     ** .merge(
-            past_3_hours**            on=group_columns,
-   **       how="left",
-        )
-    **  .merge(
-            past_6_hour**
-            on=group_columns,
-  **        how="left",
-        )
-   **   .merge(
-            latest_com**eted_day,
-            on=group_co**mns,
-            how="left",
-    **  )
         .merge(
-            l**est_two_completed_days,
-         ** on=group_columns,
-            ho**"left",
+            past_3_hours,
+            on=group_columns,
+            how="left",
         )
-        .merge(**           current_period,
-      **    on=group_columns,
-           **ow="left",
+        .merge(
+            past_6_hours,
+            on=group_columns,
+            how="left",
+        )
+        .merge(
+            latest_completed_day,
+            on=group_columns,
+            how="left",
+        )
+        .merge(
+            latest_two_completed_days,
+            on=group_columns,
+            how="left",
+        )
+        .merge(
+            current_period,
+            on=group_columns,
+            how="left",
         )
     )
+
+    # Missing aggregation fields can occur when a station has
+    # no hourly records at all. Add them before warning logic.
+    count_columns = [
+        "3-hour readings available",
+        "3-hour slots found",
+        "6-hour readings available",
+        "6-hour slots found",
+    ]
+
+    for column in count_columns:
+        if column not in table.columns:
+            table[column] = 0
+
+        table[column] = (
+            pd.to_numeric(
+                table[column],
+                errors="coerce",
+            )
+            .fillna(0)
+            .astype(int)
+        )
 
     # =====================================================
     # Dynamic daily rainfall values
     # =====================================================
 
     if daily_mode == "completed":
-        daily_column_name = (
-            "Past 24 hours (mm)"
-        )
+        daily_column_name = "Past 24 hours (mm)"
 
         table[daily_column_name] = table[
             "_latest_completed_day"
@@ -446,9 +483,7 @@ def latest_table(df):
                         row["_current_period"]
                     )
                     and pd.notna(
-                        row[
-                            "_latest_completed_day"
-                        ]
+                        row["_latest_completed_day"]
                     )
                 )
                 else float("nan")
@@ -457,61 +492,49 @@ def latest_table(df):
         )
 
     # =====================================================
-    # Hourly availability warning
+    # Hourly reading availability warnings
     # =====================================================
 
     def build_hourly_warning(row):
         warnings = []
 
         available_3 = int(
-            row.get(
-                "3-hour readings available",
-                0,
-            )
-            or 0
+            row["3-hour readings available"]
         )
 
         slots_3 = int(
-            row.get(
-                "3-hour slots found",
-                0,
-            )
-            or 0
+            row["3-hour slots found"]
         )
 
         available_6 = int(
-            row.get(
-                "6-hour readings available",
-                0,
-            )
-            or 0
+            row["6-hour readings available"]
         )
 
         slots_6 = int(
-            row.get(
-                "6-hour slots found",
-                0,
-            )
-            or 0
+            row["6-hour slots found"]
         )
 
-        if (
-            slots_3 < 3
-            or available_3 < 3
-        ):
+        if slots_3 < 3:
             warnings.append(
-                "Only "
-                f"{available_3}/3 hourly readings "
+                f"Only {slots_3}/3 hourly periods found "
+                "for the 3-hour total"
+            )
+
+        elif available_3 < 3:
+            warnings.append(
+                f"Only {available_3}/3 hourly readings "
                 "available for the 3-hour total"
             )
 
-        if (
-            slots_6 < 6
-            or available_6 < 6
-        ):
+        if slots_6 < 6:
             warnings.append(
-                "Only "
-                f"{available_6}/6 hourly readings "
+                f"Only {slots_6}/6 hourly periods found "
+                "for the 6-hour total"
+            )
+
+        elif available_6 < 6:
+            warnings.append(
+                f"Only {available_6}/6 hourly readings "
                 "available for the 6-hour total"
             )
 
@@ -529,6 +552,10 @@ def latest_table(df):
         axis=1,
     )
 
+    # =====================================================
+    # Remove internal calculation columns
+    # =====================================================
+
     table = table.drop(
         columns=[
             "_latest_completed_day",
@@ -541,6 +568,10 @@ def latest_table(df):
         ],
         errors="ignore",
     )
+
+    # =====================================================
+    # Apply the required display order
+    # =====================================================
 
     table["station"] = pd.Categorical(
         table["station"],
@@ -560,6 +591,10 @@ def latest_table(df):
             "station": "Location",
         }
     )
+
+
+def rainfall_source_label():
+
 def rainfall_source_label():
     """
     Summarise which retrieval method supplied the rainfall products.
