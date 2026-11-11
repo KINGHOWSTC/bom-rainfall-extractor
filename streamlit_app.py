@@ -494,7 +494,7 @@ def latest_table(df):
 # =====================================================
 # Data availability warnings
 # =====================================================
- 
+
 def build_data_warning(row):
 warnings = []
  
