@@ -1570,10 +1570,6 @@ st.divider()
 
 st.subheader("Current River Levels")
 
-st.divider()
-
-st.subheader("Current River Levels")
-
 river_refresh = st.button(
     "Retrieve current river levels",
     key="river_level_refresh",
