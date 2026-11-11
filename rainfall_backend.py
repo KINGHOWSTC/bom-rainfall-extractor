@@ -41,9 +41,14 @@ FTP_DIRECTORY = "/anon/gen/fwo"
 FTP_TIMEOUT = 20
 BASE_URL = "https://www.bom.gov.au/cgi-bin/wrap_fwo.pl?{product}.html"
 BULLETINS = {
-    "1h":  {"product": "IDQ60336", "hours": 1},
-    "3h":  {"product": "IDQ60348", "hours": 3},
-    "24h": {"product": "IDQ60360", "hours": 24},
+    "1h": {
+        "product": "IDQ60336",
+        "hours": 1,
+    },
+    "24h": {
+        "product": "IDQ60360",
+        "hours": 24,
+    },
 }
 
 # The bulletins do NOT show station numbers, only names, so each station is matched
@@ -301,7 +306,6 @@ def test_ftp_connection():
 
     required_products = [
         "IDQ60336.html",
-        "IDQ60348.html",
         "IDQ60360.html",
     ]
 
