@@ -494,58 +494,38 @@ def latest_table(df):
     # =====================================================
     # Hourly reading availability warnings
     # =====================================================
-
     def build_hourly_warning(row):
-        warnings = []
-
         available_3 = int(
             row["3-hour readings available"]
-        )
-
-        slots_3 = int(
-            row["3-hour slots found"]
         )
 
         available_6 = int(
             row["6-hour readings available"]
         )
 
-        slots_6 = int(
-            row["6-hour slots found"]
-        )
+        incomplete_3 = available_3 < 3
+        incomplete_6 = available_6 < 6
 
-        if slots_3 < 3:
-            warnings.append(
-                f"Only {slots_3}/3 hourly periods found "
-                "for the 3-hour total"
+        if incomplete_3 and incomplete_6:
+            return (
+                f"Warning: Only {available_3}/3 & "
+                f"{available_6}/6 hourly readings available "
+                "for 3-hour & 6-hour totals."
             )
 
-        elif available_3 < 3:
-            warnings.append(
-                f"Only {available_3}/3 hourly readings "
-                "available for the 3-hour total"
+        if incomplete_3:
+            return (
+                f"Warning: Only {available_3}/3 hourly readings "
+                "available for 3-hour total."
             )
 
-        if slots_6 < 6:
-            warnings.append(
-                f"Only {slots_6}/6 hourly periods found "
-                "for the 6-hour total"
+        if incomplete_6:
+            return (
+                f"Warning: Only {available_6}/6 hourly readings "
+                "available for 6-hour total."
             )
 
-        elif available_6 < 6:
-            warnings.append(
-                f"Only {available_6}/6 hourly readings "
-                "available for the 6-hour total"
-            )
-
-        if not warnings:
-            return ""
-
-        return (
-            "Warning: "
-            + "; ".join(warnings)
-            + ". Missing readings treated as 0."
-        )
+        return ""
 
     table["Hourly data warning"] = table.apply(
         build_hourly_warning,
