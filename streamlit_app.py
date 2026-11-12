@@ -1421,11 +1421,13 @@ if forecast_rows:
     )
 
     st.caption(
-        "Forecast values are cumulative rainfall ranges. "
-        "The lower bounds and upper bounds of each daily "
-        "forecast are summed separately. A blank means the "
-        "forecast could not be retrieved for that location."
+        "Cumulative rainfall forecasts from BoM product IDQ11295. "
+        "The 1 Day Forecast includes today and tomorrow. "
+        "The 3 Day Forecast includes today through three days ahead. "
+        "The 5 Day Forecast includes today through five days ahead. "
+        "Forecast source details are available under Technical Tools."
     )
+    
 st.divider()
 
 # =========================================================
@@ -1849,12 +1851,14 @@ with st.expander(
 
     (
         detailed_tab,
+        forecast_tab,
         snapshot_tab,
         notes_tab,
         ftp_tab,
     ) = st.tabs(
         [
             "Detailed readings",
+            "Forecast diagnostics",
             "JSON snapshot",
             "Data notes",
             "BoM FTP test",
@@ -1937,6 +1941,97 @@ with st.expander(
             key="download_detailed_rainfall",
         )
 
+        # =========================================================
+    # Forecast diagnostics
+    # =========================================================
+
+    with forecast_tab:
+        st.caption(
+            "Technical details for the BoM forecast source, "
+            "forecast issue time and project-location mapping."
+        )
+
+        forecast_metadata = (
+            forecast.get_forecast_metadata()
+        )
+
+        if forecast_metadata:
+            diagnostic_left, diagnostic_middle = (
+                st.columns(2)
+            )
+
+            diagnostic_left.metric(
+                "Forecast source",
+                forecast_metadata.get(
+                    "source",
+                    "Unknown",
+                ),
+            )
+
+            diagnostic_middle.metric(
+                "BoM product",
+                forecast_metadata.get(
+                    "product",
+                    "IDQ11295",
+                ),
+            )
+
+            st.write(
+                "Forecast issued:"
+            )
+
+            st.code(
+                str(
+                    forecast_metadata.get(
+                        "issue_time",
+                        "Unknown",
+                    )
+                )
+            )
+
+            st.write(
+                "Next routine issue:"
+            )
+
+            st.code(
+                str(
+                    forecast_metadata.get(
+                        "next_issue_time",
+                        "Unknown",
+                    )
+                )
+            )
+
+            location_mapping = (
+                forecast_metadata.get(
+                    "location_mapping",
+                    [],
+                )
+            )
+
+            if location_mapping:
+                st.write(
+                    "Project-to-BoM forecast-location mapping:"
+                )
+
+                st.dataframe(
+                    pd.DataFrame(
+                        location_mapping
+                    ),
+                    hide_index=True,
+                    width="stretch",
+                )
+
+            else:
+                st.info(
+                    "Forecast-location mapping is unavailable."
+                )
+
+        else:
+            st.info(
+                "No BoM forecast retrieval has been completed."
+            )
+    
     # =========================================================
     # Complete JSON snapshot
     # =========================================================
