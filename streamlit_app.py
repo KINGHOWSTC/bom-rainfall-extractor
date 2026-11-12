@@ -504,96 +504,92 @@ def latest_table(df):
     # Data availability warnings
     # =====================================================
 
-        def build_data_warning(row):
-            warnings = []
-    
-            available_3 = int(
-                row["3-hour readings available"]
-            )
-    
-            available_6 = int(
-                row["6-hour readings available"]
-            )
-    
-            # Only report an incomplete hourly total when at least
-            # one hourly reading is available. Suppress unhelpful
-            # messages such as 0/3 and 0/6.
-            warn_3_hour = (
-                0 < available_3 < 3
-            )
-    
-            warn_6_hour = (
-                0 < available_6 < 6
-            )
-    
-            if warn_3_hour and warn_6_hour:
-                warnings.append(
-                    f"Only {available_3}/3 & "
-                    f"{available_6}/6 hourly readings available "
-                    "for 3-hour & 6-hour totals"
-                )
+    def build_data_warning(row):
+        warnings = []
 
-            elif warn_3_hour:
-                warnings.append(
-                    f"Only {available_3}/3 hourly readings "
-                    "available for 3-hour total"
-                )
-
-            elif warn_6_hour:
-                warnings.append(
-                    f"Only {available_6}/6 hourly readings "
-                    "available for 6-hour total"
-                )
-
-            # Daily observations remain unavailable when missing.
-            # Missing daily observations are not treated as zero.
-            if daily_mode == "completed":
-                if pd.isna(
-                    row.get("Past 24 hours (mm)")
-                ):
-                    warnings.append(
-                        "Past 24-hour observation unavailable"
-                    )
-    
-                if pd.isna(
-                    row.get("Past 2 days (mm)")
-                ):
-                    warnings.append(
-                        "Past 2-day total incomplete"
-                    )
-    
-            else:
-                if pd.isna(
-                    row.get(
-                        "Current rainfall period (mm)"
-                    )
-                ):
-                    warnings.append(
-                        "Current rainfall-period observation "
-                        "unavailable"
-                    )
-    
-                if pd.isna(
-                    row.get("Past 2 days (mm)")
-                ):
-                    warnings.append(
-                        "Past 2-day total incomplete"
-                    )
-    
-            if not warnings:
-                return ""
-    
-            return (
-                "Warning: "
-                + "; ".join(warnings)
-                + "."
-            )
-
-        table["Data warning"] = table.apply(
-            build_data_warning,
-            axis=1,
+        available_3 = int(
+            row["3-hour readings available"]
         )
 
+        available_6 = int(
+            row["6-hour readings available"]
+        )
+
+        # Suppress unhelpful 0/3 and 0/6 warnings.
+        warn_3_hour = (
+            0 < available_3 < 3
+        )
+
+        warn_6_hour = (
+            0 < available_6 < 6
+        )
+
+        if warn_3_hour and warn_6_hour:
+            warnings.append(
+                f"Only {available_3}/3 & "
+                f"{available_6}/6 hourly readings available "
+                "for 3-hour & 6-hour totals"
+            )
+
+        elif warn_3_hour:
+            warnings.append(
+                f"Only {available_3}/3 hourly readings "
+                "available for 3-hour total"
+            )
+
+        elif warn_6_hour:
+            warnings.append(
+                f"Only {available_6}/6 hourly readings "
+                "available for 6-hour total"
+            )
+
+        if daily_mode == "completed":
+            if pd.isna(
+                row.get("Past 24 hours (mm)")
+            ):
+                warnings.append(
+                    "Past 24-hour observation unavailable"
+                )
+
+            if pd.isna(
+                row.get("Past 2 days (mm)")
+            ):
+                warnings.append(
+                    "Past 2-day total incomplete"
+                )
+
+        else:
+            if pd.isna(
+                row.get(
+                    "Current rainfall period (mm)"
+                )
+            ):
+                warnings.append(
+                    "Current rainfall-period observation "
+                    "unavailable"
+                )
+
+            if pd.isna(
+                row.get("Past 2 days (mm)")
+            ):
+                warnings.append(
+                    "Past 2-day total incomplete"
+                )
+
+        if not warnings:
+            return ""
+
+        return (
+            "Warning: "
+            + "; ".join(warnings)
+            + "."
+        )
+
+    table["Data warning"] = table.apply(
+        build_data_warning,
+        axis=1,
+    )
+    
     # =====================================================
     # Remove internal calculation columns
     # =====================================================
