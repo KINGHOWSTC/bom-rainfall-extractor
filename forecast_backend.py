@@ -548,9 +548,6 @@ def collect_forecasts():
                         "station_number"
                     ],
                     "Location": item["location"],
-                    "BoM Forecast Location": item[
-                        "bom_location"
-                    ],
                     "1 Day Forecast": None,
                     "3 Day Forecast": None,
                     "5 Day Forecast": None,
@@ -563,8 +560,24 @@ def collect_forecasts():
                 "source": "Unavailable",
                 "issue_time": None,
                 "next_issue_time": None,
+                "location_mapping": [
+                    {
+                        "Station Number": item[
+                            "station_number"
+                        ],
+                        "Project Location": item[
+                            "location"
+                        ],
+                        "BoM Forecast Location": item[
+                            "bom_location"
+                        ],
+                        "BoM AAC": item[
+                            "bom_aac"
+                        ],
+                    }
+                    for item in FORECASTS
+                ],
             }
-
             errors.append(str(exc))
 
             return rows, errors
@@ -632,9 +645,6 @@ def collect_forecasts():
                 "station_number"
             ],
             "Location": item["location"],
-            "BoM Forecast Location": item[
-                "bom_location"
-            ],
             "1 Day Forecast": one_day,
             "3 Day Forecast": three_day,
             "5 Day Forecast": five_day,
@@ -652,6 +662,23 @@ def collect_forecasts():
         "next_issue_time": package.get(
             "next_issue_time"
         ),
+        "location_mapping": [
+            {
+                "Station Number": item[
+                    "station_number"
+                ],
+                "Project Location": item[
+                    "location"
+                ],
+                "BoM Forecast Location": item[
+                    "bom_location"
+                ],
+                "BoM AAC": item[
+                    "bom_aac"
+                ],
+            }
+            for item in FORECASTS
+        ],
     }
 
     return rows, errors
