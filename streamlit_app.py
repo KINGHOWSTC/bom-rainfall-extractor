@@ -511,50 +511,42 @@ def latest_table(df):
             row["3-hour readings available"]
         )
 
-        slots_3 = int(
-            row["3-hour slots found"]
-        )
-
         available_6 = int(
             row["6-hour readings available"]
         )
 
-        slots_6 = int(
-            row["6-hour slots found"]
+        # Only report an incomplete hourly total when at least
+        # one hourly reading is available. Suppress unhelpful
+        # messages such as 0/3 and 0/6.
+        warn_3_hour = (
+            0 < available_3 < 3
         )
 
-        # Only show hourly availability warnings where the
-        # hourly bulletin supplied enough hourly slots to
-        # calculate the relevant rolling period.
-        incomplete_3 = (
-            slots_3 < 3
-            or available_3 < 3
+        warn_6_hour = (
+            0 < available_6 < 6
         )
 
-        incomplete_6 = (
-            slots_6 < 6
-            or available_6 < 6
-        )
-
-        if incomplete_3 and incomplete_6:
+        if warn_3_hour and warn_6_hour:
             warnings.append(
                 f"Only {available_3}/3 & "
                 f"{available_6}/6 hourly readings available "
                 "for 3-hour & 6-hour totals"
             )
 
-        elif incomplete_3:
+        elif warn_3_hour:
             warnings.append(
                 f"Only {available_3}/3 hourly readings "
                 "available for 3-hour total"
             )
 
-        elif incomplete_6:
+        elif warn_6_hour:
             warnings.append(
                 f"Only {available_6}/6 hourly readings "
                 "available for 6-hour total"
             )
 
+        # Daily observations remain unavailable when missing.
+        # Missing daily observations are not treated as zero.
         if daily_mode == "completed":
             if pd.isna(
                 row.get("Past 24 hours (mm)")
