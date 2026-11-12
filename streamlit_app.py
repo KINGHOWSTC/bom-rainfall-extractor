@@ -1455,81 +1455,99 @@ rainfall_summary = latest_table(
     df
 )
 
-if (
+# Remove the warning column when every warning is blank.
+show_data_warning = (
     "Data warning" in rainfall_summary.columns
     and rainfall_summary[
         "Data warning"
-    ].fillna("").eq("").all()
+    ].fillna("").ne("").any()
+)
+
+if (
+    "Data warning" in rainfall_summary.columns
+    and not show_data_warning
 ):
     rainfall_summary = rainfall_summary.drop(
         columns=["Data warning"]
     )
 
 if "Past 24 hours (mm)" in rainfall_summary.columns:
-    daily_column_name = "Past 24 hours (mm)"
+    daily_column_name = (
+        "Past 24 hours (mm)"
+    )
+
 else:
     daily_column_name = (
         "Current rainfall period (mm)"
     )
 
+# This configuration belongs only to the Rainfall Occurred table.
+rainfall_column_config = {
+    "Station number": (
+        st.column_config.TextColumn(
+            width="small"
+        )
+    ),
+    "Location": (
+        st.column_config.TextColumn(
+            width="medium"
+        )
+    ),
+    "Past 3 hours (mm)": (
+        st.column_config.NumberColumn(
+            format="%.1f"
+        )
+    ),
+    "Past 6 hours (mm)": (
+        st.column_config.NumberColumn(
+            format="%.1f"
+        )
+    ),
+    daily_column_name: (
+        st.column_config.NumberColumn(
+            format="%.1f"
+        )
+    ),
+    "Past 2 days (mm)": (
+        st.column_config.NumberColumn(
+            format="%.1f"
+        )
+    ),
+}
+
+# Configure the warning column only when it still exists.
+if "Data warning" in rainfall_summary.columns:
+    rainfall_column_config[
+        "Data warning"
+    ] = st.column_config.TextColumn(
+        "Data warning",
+        width="large",
+    )
+
+# This is the Rainfall Occurred dataframe.
 st.dataframe(
     rainfall_summary,
     hide_index=True,
     width="stretch",
-    column_config={
-        "Station number": (
-            st.column_config.TextColumn(
-                width="small"
-            )
-        ),
-        "Location": (
-            st.column_config.TextColumn(
-                width="medium"
-            )
-        ),
-        "Past 3 hours (mm)": (
-            st.column_config.NumberColumn(
-                format="%.1f"
-            )
-        ),
-        "Past 6 hours (mm)": (
-            st.column_config.NumberColumn(
-                format="%.1f"
-            )
-        ),
-        daily_column_name: (
-            st.column_config.NumberColumn(
-                format="%.1f"
-            )
-        ),
-        "Past 2 days (mm)": (
-            st.column_config.NumberColumn(
-                format="%.1f"
-            )
-        ),
-        "Data warning": (
-            st.column_config.TextColumn(
-                "Data warning",
-                width="large",
-            )
-        ),
-    },
+    column_config=rainfall_column_config,
 )
 
-stations_with_data_warnings = (
-    rainfall_summary[
+# Read the warning column only when it exists.
+if "Data warning" in rainfall_summary.columns:
+    stations_with_data_warnings = (
         rainfall_summary[
-            "Data warning"
-        ].fillna("").ne("")
-    ]
-)
-
-if not stations_with_data_warnings.empty:
-    st.warning(
-        f"Incomplete rainfall data for "
-        f"{len(stations_with_data_warnings)} station(s). "
-        "See the Data warning column."
+            rainfall_summary[
+                "Data warning"
+            ].fillna("").ne("")
+        ]
     )
+
+    if not stations_with_data_warnings.empty:
+        st.warning(
+            f"Incomplete rainfall data for "
+            f"{len(stations_with_data_warnings)} station(s). "
+            "See the Data warning column."
+        )
 
 daily_warning = rainfall_daily_warning(
     df
