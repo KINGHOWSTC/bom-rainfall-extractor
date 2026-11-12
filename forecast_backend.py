@@ -628,17 +628,23 @@ def collect_forecasts():
             )
         )
 
-        for label, missing_dates in (
-            ("1 Day Forecast", missing_1),
-            ("3 Day Forecast", missing_3),
-            ("5 Day Forecast", missing_5),
-        ):
-            if missing_dates:
-                errors.append(
-                    f"{item['location']}: "
-                    f"{label} incomplete. Missing "
-                    + ", ".join(missing_dates)
+        all_missing_dates = sorted(
+            set(
+                missing_1
+                + missing_3
+                + missing_5
+            )
+        )
+
+        if all_missing_dates:
+            errors.append(
+                f"{item['location']}: no numerical BoM "
+                "rainfall range is available for "
+                + ", ".join(
+                    all_missing_dates
                 )
+                + "."
+            )
 
         rows.append({
             "Station Number": item[
