@@ -1455,6 +1455,16 @@ rainfall_summary = latest_table(
     df
 )
 
+if (
+    "Data warning" in rainfall_summary.columns
+    and rainfall_summary[
+        "Data warning"
+    ].fillna("").eq("").all()
+):
+    rainfall_summary = rainfall_summary.drop(
+        columns=["Data warning"]
+    )
+
 if "Past 24 hours (mm)" in rainfall_summary.columns:
     daily_column_name = "Past 24 hours (mm)"
 else:
