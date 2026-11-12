@@ -1204,7 +1204,7 @@ def build_completed_excel(
     return output.getvalue()
 
 st.title("Rainfall Data Extractor")
-st.caption("Selected BoM flood-warning gauges: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
+st.caption("Selected Locations: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
 st.markdown(
     """
@@ -1342,13 +1342,6 @@ if df.empty:
 
 
 st.subheader("Rainfall Forecasts")
-
-st.caption(
-    "Cumulative Rain Amount forecasts from Elders Weather. "
-    "The 1 Day Forecast includes Today and Tomorrow. "
-    "The 3 Day Forecast includes Today through three days ahead. "
-    "The 5 Day Forecast includes Today through five days ahead."
-)
 
 forecast_refresh = st.button(
     "Refresh rainfall forecasts",
