@@ -1748,7 +1748,7 @@ if river_records:
                 )
             ),
         },
-
+    )
     st.caption(
         "Current River Level is adopted from Height (m). "
         "Rising/Falling/Steady is adopted from Tendency."
@@ -1758,6 +1758,7 @@ else:
     st.info(
         "No current river-level records are available."
     )
+    
 
 # =========================================================
 # Completed Excel daily record
