@@ -1284,12 +1284,6 @@ def populate_river_rows(
             )
         )
 
-        max_cell.value = excel_safe_value(
-            excel_max
-        )
-
-        max_cell.number_format = '0.00" m"'
-
 def build_completed_excel(
     forecast_rows,
     rainfall_table,
