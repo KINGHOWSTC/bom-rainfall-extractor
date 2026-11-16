@@ -1617,6 +1617,7 @@ if river_records:
         river_maxima = {}
 
     river_max_lookup = {
+        "540065": river_maxima.get("Peak Crossing"),
         "540062": river_maxima.get("Loamside"),
         "540057": river_maxima.get("Kalbar Weir"),
         "540387": river_maxima.get("Harrisville"),
