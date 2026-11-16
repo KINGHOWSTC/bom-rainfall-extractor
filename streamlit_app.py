@@ -1151,8 +1151,29 @@ def populate_river_rows(
             column=12,   # Column L
         )
 
+        scraped_max = river_max_lookup.get(gauge)
+
+        current_level = record.get(
+            "Current River Level (m)"
+        )
+        
+        if (
+            scraped_max is not None
+            and current_level is not None
+        ):
+            excel_max = max(
+                float(scraped_max),
+                float(current_level)
+            )
+        else:
+            excel_max = (
+                scraped_max
+                if scraped_max is not None
+                else current_level
+            )
+        
         max_cell.value = excel_safe_value(
-            river_max_lookup.get(gauge)
+            excel_max
         )
 
         max_cell.number_format = '0.00" m"'
