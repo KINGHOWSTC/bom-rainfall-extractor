@@ -58,6 +58,9 @@ def get_bom_river_table(station_id):
         if line.strip()
     ]
 
+    if station_id == "540065":
+        print(lines[:200])
+    
     for i in range(len(lines) - 1):
 
         try:
@@ -76,8 +79,20 @@ def get_bom_river_table(station_id):
                 }
             )
 
-        except Exception:
+        except Exception as ex:
+            print(
+                "FAILED:",
+                station_id,
+                lines[i:i+2],
+                ex
+            )
             continue
+
+        print(
+        station_id,
+        "rows found:",
+        len(rows)
+    )
 
     return pd.DataFrame(rows)
 
