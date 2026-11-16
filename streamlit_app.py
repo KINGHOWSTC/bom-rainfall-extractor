@@ -1091,6 +1091,36 @@ def populate_observed_rainfall_rows(
             )
         )
 
+# =========================================================
+# River-level Excel template mapping
+# =========================================================
+
+# Fixed row mapping for the Current River Levels section
+# in FloodWarningSystem_Template.xlsx.
+#
+# Template columns:
+#   C = Location
+#   F = Observation Time
+#   G = Current River Level
+#   H = 24-hour River Maximum
+#   I = Rising/Steady/Falling
+
+RIVER_EXCEL_ROWS = {
+    "540065": 28,  # Peak Crossing
+    "540062": 29,  # Loamside
+    "540057": 30,  # Kalbar
+    "540387": 31,  # Harrisville
+    "540180": 32,  # Amberley
+    "540157": 33,  # Adams Bridge
+    "540388": 34,  # Rosewood
+    "540147": 35,  # Five Mile Bridge
+    "540504": 36,  # Walloon
+    "040838": 37,  # Three Mile Bridge
+    "540216": 38,  # Berry's Lagoon
+    "040836": 39,  # One Mile Bridge
+    "540250": 40,  # Hancocks Bridge
+    "040831": 41,  # Ipswich
+}
 
 def populate_river_rows(
     worksheet,
@@ -1100,86 +1130,95 @@ def populate_river_rows(
     """
     Populate the Current River Levels section.
 
-    Template layout:
-        B17:B30 = Gauge numbers, prefilled
-        C17:C30 = Locations, prefilled
-        D17:D30 = Links, prefilled
-        E17:E30 = Observation Time
-        F17:F30 = Current River Level
-        J17:J30 = Rising/Falling/Steady
-        L17:L30 = 24-hour River Maximum
+    Fixed template layout:
+        C28:C41 = Locations, prefilled
+        F28:F41 = Observation Time
+        G28:G41 = Current River Level
+        H28:H41 = 24-hour River Maximum
+        I28:I41 = Rising/Steady/Falling
 
-    The function does not modify:
-        A = Risk Element
-        B = Gauges
-        C = Location
-        D = Link
-        G:I = Other template fields
+    Rows:
+        28 = Peak Crossing
+        29 = Loamside
+        30 = Kalbar
+        31 = Harrisville
+        32 = Amberley
+        33 = Adams Bridge
+        34 = Rosewood
+        35 = Five Mile Bridge
+        36 = Walloon
+        37 = Three Mile Bridge
+        38 = Berry's Lagoon
+        39 = One Mile Bridge
+        40 = Hancocks Bridge
+        41 = Ipswich
+
+    The template location names in column C are not modified.
     """
-
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=17,
-        last_row=30,
-    )
-
-    worksheet["L16"] = "24h River Maxima"
 
     for record in river_records:
         gauge = normalise_gauge(
             record.get("Gauge Number")
         )
 
-        row_number = row_lookup.get(
+        row_number = RIVER_EXCEL_ROWS.get(
             gauge
         )
 
         if row_number is None:
             continue
 
-        # E: Observation Time
+        # =================================================
+        # F: Observation Time
+        # =================================================
+
         observation_time_cell = worksheet.cell(
             row=row_number,
-            column=5,
+            column=6,
         )
 
         observation_time_cell.value = excel_safe_value(
             record.get("Observation Time")
         )
 
-        # F: Current River Level
-        river_level_cell = worksheet.cell(
-            row=row_number,
-            column=6,
-        )
+        # =================================================
+        # G: Current River Level
+        # =================================================
 
         current_level = record.get(
             "Current River Level (m)"
         )
 
+        try:
+            current_level_numeric = (
+                float(current_level)
+                if (
+                    current_level is not None
+                    and not pd.isna(current_level)
+                )
+                else None
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            current_level_numeric = None
+
+        river_level_cell = worksheet.cell(
+            row=row_number,
+            column=7,
+        )
+
         river_level_cell.value = excel_safe_value(
-            current_level
+            current_level_numeric
         )
 
         river_level_cell.number_format = '0.00" m"'
 
-        # J: Rising/Falling/Steady
-        tendency_cell = worksheet.cell(
-            row=row_number,
-            column=10,
-        )
-
-        tendency_cell.value = excel_safe_value(
-            record.get(
-                "Rising/Falling/Steady"
-            )
-        )
-
-        # L: 24-hour maximum
-        max_cell = worksheet.cell(
-            row=row_number,
-            column=12,
-        )
+        # =================================================
+        # H: 24-hour River Maximum
+        # =================================================
 
         scraped_max = river_max_lookup.get(
             gauge
@@ -1188,43 +1227,62 @@ def populate_river_rows(
         try:
             scraped_max_numeric = (
                 float(scraped_max)
-                if scraped_max is not None
-                and not pd.isna(scraped_max)
+                if (
+                    scraped_max is not None
+                    and not pd.isna(scraped_max)
+                )
                 else None
             )
+
         except (
             TypeError,
             ValueError,
         ):
             scraped_max_numeric = None
 
-        try:
-            current_level_numeric = (
-                float(current_level)
-                if current_level is not None
-                and not pd.isna(current_level)
-                else None
-            )
-        except (
-            TypeError,
-            ValueError,
-        ):
-            current_level_numeric = None
-
+        # Include the latest current level in the maximum.
+        # This protects against the current FTP bulletin
+        # updating before the historical table.
         if (
             scraped_max_numeric is not None
             and current_level_numeric is not None
         ):
-            excel_max = max(
+            river_maximum = max(
                 scraped_max_numeric,
                 current_level_numeric,
             )
 
         elif scraped_max_numeric is not None:
-            excel_max = scraped_max_numeric
+            river_maximum = scraped_max_numeric
 
         else:
-            excel_max = current_level_numeric
+            river_maximum = current_level_numeric
+
+        max_cell = worksheet.cell(
+            row=row_number,
+            column=8,
+        )
+
+        max_cell.value = excel_safe_value(
+            river_maximum
+        )
+
+        max_cell.number_format = '0.00" m"'
+
+        # =================================================
+        # I: Rising/Steady/Falling
+        # =================================================
+
+        tendency_cell = worksheet.cell(
+            row=row_number,
+            column=9,
+        )
+
+        tendency_cell.value = excel_safe_value(
+            record.get(
+                "Rising/Falling/Steady"
+            )
+        )
 
         max_cell.value = excel_safe_value(
             excel_max
