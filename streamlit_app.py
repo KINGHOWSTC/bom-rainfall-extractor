@@ -17,6 +17,32 @@ from river_scraper import get_all_24h_maxima
 def load_river_maxima():
     return get_all_24h_maxima()
 
+def build_river_max_lookup(river_maxima):
+    """
+    Map BoM gauge numbers to the corresponding scraped
+    24-hour maximum river levels.
+
+    The dictionary keys used with river_maxima.get() must
+    exactly match the names configured in river_scraper.py.
+    """
+
+    return {
+        "540065": river_maxima.get("Peak Crossing"),
+        "540062": river_maxima.get("Loamside"),
+        "540057": river_maxima.get("Kalbar Weir"),
+        "540387": river_maxima.get("Harrisville"),
+        "540180": river_maxima.get("Amberley"),
+        "540157": river_maxima.get("Adams Bridge"),
+        "540388": river_maxima.get("Rosewood"),
+        "540147": river_maxima.get("Five Mile Bridge"),
+        "540504": river_maxima.get("Walloon"),
+        "040838": river_maxima.get("Three Mile Bridge"),
+        "540216": river_maxima.get("Berrys Lagoon"),
+        "040836": river_maxima.get("One Mile Bridge"),
+        "540250": river_maxima.get("Brassall"),
+        "040831": river_maxima.get("Ipswich"),
+    }
+
 st.set_page_config(page_title="Rainfall Data Extractor", page_icon="🌧️", layout="wide")
 
 SERIES_LABELS = {
@@ -1075,12 +1101,13 @@ def populate_river_rows(
     Populate the Current River Levels section.
 
     Template layout:
-        B17:B28 = Gauge numbers, prefilled
-        C17:C28 = Locations, prefilled
-        D17:D28 = Links, prefilled
-        E17:E28 = Observation Time
-        F17:F28 = Current River Level
-        J17:J28 = Rising/Falling/Steady
+        B17:B30 = Gauge numbers, prefilled
+        C17:C30 = Locations, prefilled
+        D17:D30 = Links, prefilled
+        E17:E30 = Observation Time
+        F17:F30 = Current River Level
+        J17:J30 = Rising/Falling/Steady
+        L17:L30 = 24-hour River Maximum
 
     The function does not modify:
         A = Risk Element
@@ -1093,11 +1120,11 @@ def populate_river_rows(
     row_lookup = gauge_row_lookup(
         worksheet,
         first_row=17,
-        last_row=28,
+        last_row=30,
     )
-    
+
     worksheet["L16"] = "24h River Maxima"
-    
+
     for record in river_records:
         gauge = normalise_gauge(
             record.get("Gauge Number")
@@ -1126,13 +1153,14 @@ def populate_river_rows(
             column=6,
         )
 
-        river_level_cell.value = excel_safe_value(
-            record.get(
-                "Current River Level (m)"
-            )
+        current_level = record.get(
+            "Current River Level (m)"
         )
 
-        # Keep the value numeric but display the unit.
+        river_level_cell.value = excel_safe_value(
+            current_level
+        )
+
         river_level_cell.number_format = '0.00" m"'
 
         # J: Rising/Falling/Steady
@@ -1146,32 +1174,58 @@ def populate_river_rows(
                 "Rising/Falling/Steady"
             )
         )
+
+        # L: 24-hour maximum
         max_cell = worksheet.cell(
             row=row_number,
-            column=12,   # Column L
+            column=12,
         )
 
-        scraped_max = river_max_lookup.get(gauge)
-
-        current_level = record.get(
-            "Current River Level (m)"
+        scraped_max = river_max_lookup.get(
+            gauge
         )
-        
+
+        try:
+            scraped_max_numeric = (
+                float(scraped_max)
+                if scraped_max is not None
+                and not pd.isna(scraped_max)
+                else None
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            scraped_max_numeric = None
+
+        try:
+            current_level_numeric = (
+                float(current_level)
+                if current_level is not None
+                and not pd.isna(current_level)
+                else None
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            current_level_numeric = None
+
         if (
-            scraped_max is not None
-            and current_level is not None
+            scraped_max_numeric is not None
+            and current_level_numeric is not None
         ):
             excel_max = max(
-                float(scraped_max),
-                float(current_level)
+                scraped_max_numeric,
+                current_level_numeric,
             )
+
+        elif scraped_max_numeric is not None:
+            excel_max = scraped_max_numeric
+
         else:
-            excel_max = (
-                scraped_max
-                if scraped_max is not None
-                else current_level
-            )
-        
+            excel_max = current_level_numeric
+
         max_cell.value = excel_safe_value(
             excel_max
         )
@@ -1648,43 +1702,67 @@ if river_records:
 
     try:
         river_maxima = load_river_maxima()
-    except Exception:
+
+    except Exception as exc:
         river_maxima = {}
 
-    river_max_lookup = {
-        "540065": river_maxima.get("Peak Crossing"),
-        "540062": river_maxima.get("Loamside"),
-        "540057": river_maxima.get("Kalbar Weir"),
-        "540387": river_maxima.get("Harrisville"),
-        "540180": river_maxima.get("Amberley"),
-        "540157": river_maxima.get("Adams Bridge"),
-        "540388": river_maxima.get("Rosewood"),
-        "540147": river_maxima.get("Five Mile Bridge"),
-        "540504": river_maxima.get("Walloon"),
-        "040836": river_maxima.get("One Mile Bridge"),
-        "540250": river_maxima.get("Brassall"),
-        "040831": river_maxima.get("Ipswich"),
-    }
+        st.warning(
+            "The 24-hour river maxima could not be retrieved. "
+            f"Current river levels are still available. Error: {exc}"
+        )
 
-    river_df["24 Hour Max (m)"] = (
-        river_df["Gauge Number"]
-        .astype(str)
-        .str.zfill(6)
-        .map(river_max_lookup)
+    river_max_lookup = build_river_max_lookup(
+        river_maxima
     )
 
-    river_df["24 Hour Max (m)"] = river_df[
-        [
-            "24 Hour Max (m)",
-            "Current River Level (m)"
-        ]
-    ].max(axis=1)
-    
-    # Preserve six-character gauge numbers.
+    # Preserve gauge numbers as six-character strings.
     river_df["Gauge Number"] = (
         river_df["Gauge Number"]
         .astype(str)
+        .str.strip()
+        .str.replace(
+            r"\.0$",
+            "",
+            regex=True,
+        )
         .str.zfill(6)
+    )
+
+    # Ensure river-level values are numeric.
+    river_df["Current River Level (m)"] = (
+        pd.to_numeric(
+            river_df[
+                "Current River Level (m)"
+            ],
+            errors="coerce",
+        )
+    )
+
+    # Add the scraped 24-hour maximum.
+    river_df["24 Hour Max (m)"] = (
+        river_df["Gauge Number"]
+        .map(river_max_lookup)
+    )
+
+    river_df["24 Hour Max (m)"] = (
+        pd.to_numeric(
+            river_df["24 Hour Max (m)"],
+            errors="coerce",
+        )
+    )
+
+    # The latest current level must be included in the
+    # effective 24-hour maximum. This handles a rapidly
+    # rising river where the current FTP bulletin is newer
+    # than the historical table.
+    river_df["24 Hour Max (m)"] = river_df[
+        [
+            "24 Hour Max (m)",
+            "Current River Level (m)",
+        ]
+    ].max(
+        axis=1,
+        skipna=True,
     )
 
     # Enforce one row per gauge.
@@ -1698,21 +1776,23 @@ if river_records:
     )
 
     river_gauge_order = [
-        "540065",
-        "540062",
-        "540057",
-        "540387",
-        "540180",
-        "540157",
-        "540388",
-        "540147",
-        "540504",
-        "040836",
-        "540250",
-        "040831",
+        "540065",  # Peak Crossing
+        "540062",  # Loamside
+        "540057",  # Kalbar
+        "540387",  # Harrisville
+        "540180",  # Amberley
+        "540157",  # Adams Bridge
+        "540388",  # Rosewood
+        "540147",  # Five Mile Bridge
+        "540504",  # Walloon
+        "040838",  # Three Mile Bridge
+        "540216",  # Berrys Lagoon
+        "040836",  # One Mile Bridge
+        "540250",  # Hancocks Bridge
+        "040831",  # Ipswich
     ]
 
-    river_df["Gauge Number"] = pd.Categorical(
+    river_df["Gauge Order"] = pd.Categorical(
         river_df["Gauge Number"],
         categories=river_gauge_order,
         ordered=True,
@@ -1720,23 +1800,31 @@ if river_records:
 
     river_df = (
         river_df
-        .sort_values("Gauge Number")
+        .sort_values("Gauge Order")
+        .drop(columns=["Gauge Order"])
         .reset_index(drop=True)
     )
 
-    unique_river_gauges = len(
-        river_df[
-            "Gauge Number"
-        ].dropna().unique()
+    unique_river_gauges = river_df[
+        "Gauge Number"
+    ].nunique()
+
+    expected_river_gauges = len(
+        river_gauge_order
     )
 
-    if unique_river_gauges != 12:
+    if (
+        unique_river_gauges
+        != expected_river_gauges
+    ):
         st.warning(
-            f"Expected 12 unique river gauges but received "
-            f"{unique_river_gauges}."
+            f"Expected {expected_river_gauges} unique river "
+            f"gauges but received {unique_river_gauges}."
         )
 
-    info_left, info_middle, info_right = st.columns(3)
+    info_left, info_middle, info_right = (
+        st.columns(3)
+    )
 
     info_left.metric(
         "Data source",
@@ -1764,11 +1852,10 @@ if river_records:
         ),
     )
 
-    # Header + 12 gauge rows + horizontal-scroll allowance.
-
+    # Header, gauge rows and horizontal-scroll allowance.
     river_table_height = (
-    32
-    + len(river_df) * 35
+        32
+        + len(river_df) * 35
     )
 
     st.dataframe(
@@ -1792,10 +1879,13 @@ if river_records:
             ),
         },
     )
+
     st.caption(
         "Current River Level is adopted from Height (m). "
-        "Rising/Falling/Steady is adopted from Tendency."
-    )    
+        "Rising/Falling/Steady is adopted from Tendency. "
+        "The 24-hour maximum is the greater of the scraped "
+        "24-hour maximum and the latest current river level."
+    )
 
 else:
     st.info(
@@ -1836,20 +1926,17 @@ excel_ready = (
     and bool(river_for_excel)
 )
 
-river_excel_max_lookup = {
-    "540065": river_maxima.get("Peak Crossing"),
-    "540062": river_maxima.get("Loamside"),
-    "540057": river_maxima.get("Kalbar Weir"),
-    "540387": river_maxima.get("Harrisville"),
-    "540180": river_maxima.get("Amberley"),
-    "540157": river_maxima.get("Adams Bridge"),
-    "540388": river_maxima.get("Rosewood"),
-    "540147": river_maxima.get("Five Mile Bridge"),
-    "540504": river_maxima.get("Walloon"),
-    "040836": river_maxima.get("One Mile Bridge"),
-    "540250": river_maxima.get("Brassall"),
-    "040831": river_maxima.get("Ipswich"),
-}
+river_maxima_for_excel = {}
+
+try:
+    river_maxima_for_excel = load_river_maxima()
+
+except Exception:
+    river_maxima_for_excel = {}
+
+river_excel_max_lookup = build_river_max_lookup(
+    river_maxima_for_excel
+)
 
 if excel_ready:
     try:
