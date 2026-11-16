@@ -1616,7 +1616,7 @@ if river_records:
     except Exception:
         river_maxima = {}
 
-        river_max_lookup = {
+    river_max_lookup = {
         "540062": river_maxima.get("Loamside"),
         "540057": river_maxima.get("Kalbar Weir"),
         "540387": river_maxima.get("Harrisville"),
