@@ -1069,6 +1069,7 @@ def populate_observed_rainfall_rows(
 def populate_river_rows(
     worksheet,
     river_records,
+    river_max_lookup,
 ):
     """
     Populate the Current River Levels section.
@@ -1094,7 +1095,9 @@ def populate_river_rows(
         first_row=17,
         last_row=28,
     )
-
+    
+    worksheet["L16"] = "24h River Maxima"
+    
     for record in river_records:
         gauge = normalise_gauge(
             record.get("Gauge Number")
@@ -1143,12 +1146,22 @@ def populate_river_rows(
                 "Rising/Falling/Steady"
             )
         )
+        max_cell = worksheet.cell(
+            row=row_number,
+            column=12,   # Column L
+        )
 
+        max_cell.value = excel_safe_value(
+            river_max_lookup.get(gauge)
+        )
+
+        max_cell.number_format = '0.00" m"'
 
 def build_completed_excel(
     forecast_rows,
     rainfall_table,
     river_records,
+    river_max_lookup,
 ):
     """
     Open the Excel template, populate a fresh copy in memory and
@@ -1183,6 +1196,7 @@ def build_completed_excel(
     populate_river_rows(
         worksheet,
         river_records,
+        river_max_lookup,
     )
 
     output = BytesIO()
@@ -1794,12 +1808,28 @@ excel_ready = (
     and bool(river_for_excel)
 )
 
+river_excel_max_lookup = {
+    "540065": river_maxima.get("Peak Crossing"),
+    "540062": river_maxima.get("Loamside"),
+    "540057": river_maxima.get("Kalbar Weir"),
+    "540387": river_maxima.get("Harrisville"),
+    "540180": river_maxima.get("Amberley"),
+    "540157": river_maxima.get("Adams Bridge"),
+    "540388": river_maxima.get("Rosewood"),
+    "540147": river_maxima.get("Five Mile Bridge"),
+    "540504": river_maxima.get("Walloon"),
+    "040836": river_maxima.get("One Mile Bridge"),
+    "540250": river_maxima.get("Brassall"),
+    "040831": river_maxima.get("Ipswich"),
+}
+
 if excel_ready:
     try:
         completed_excel = build_completed_excel(
             forecast_rows=forecast_for_excel,
             rainfall_table=rainfall_for_excel,
             river_records=river_for_excel,
+            river_max_lookup=river_excel_max_lookup,
         )
 
         download_timestamp = datetime.now(
