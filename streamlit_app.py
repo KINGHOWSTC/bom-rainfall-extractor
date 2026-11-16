@@ -1350,7 +1350,7 @@ if df.empty:
 st.subheader("Rainfall Forecasts")
 
 st.caption(
-    "Cumulative Rain Amount forecasts from Elders Weather. "
+    "Cumulative Rain Amount forecasts. "
     "The 1 Day Forecast includes Today and Tomorrow. "
     "The 3 Day Forecast includes Today through three days ahead. "
     "The 5 Day Forecast includes Today through five days ahead."
