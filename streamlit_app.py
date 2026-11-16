@@ -1651,6 +1651,13 @@ if river_records:
         .str.zfill(6)
         .map(river_max_lookup)
     )
+
+    river_df["24 Hour Max (m)"] = river_df[
+        [
+            "24 Hour Max (m)",
+            "Current River Level (m)"
+        ]
+    ].max(axis=1)
     
     # Preserve six-character gauge numbers.
     river_df["Gauge Number"] = (
