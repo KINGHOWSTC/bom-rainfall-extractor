@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 # ------------------------------------------------------------------
 
 RIVER_GAUGES = {
+    "Peak Crossing": "540065",
     "Loamside": "540062",
     "Kalbar Weir": "540057",
     "Harrisville": "540387",
