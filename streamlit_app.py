@@ -12,6 +12,10 @@ from openpyxl import load_workbook
 import rainfall_backend as rb
 import river_level_backend as river
 import forecast_backend as forecast
+from river_scraper import get_all_24h_maxima
+@st.cache_data(ttl=900)
+def load_river_maxima():
+    return get_all_24h_maxima()
 
 st.set_page_config(page_title="Rainfall Data Extractor", page_icon="🌧️", layout="wide")
 
@@ -1607,6 +1611,32 @@ if river_records:
         river_records
     )
 
+    try:
+        river_maxima = load_river_maxima()
+    except Exception:
+        river_maxima = {}
+
+        river_max_lookup = {
+        "540062": river_maxima.get("Loamside"),
+        "540057": river_maxima.get("Kalbar Weir"),
+        "540387": river_maxima.get("Harrisville"),
+        "540180": river_maxima.get("Amberley"),
+        "540157": river_maxima.get("Adams Bridge"),
+        "540388": river_maxima.get("Rosewood"),
+        "540147": river_maxima.get("Five Mile Bridge"),
+        "540504": river_maxima.get("Walloon"),
+        "040836": river_maxima.get("One Mile Bridge"),
+        "540250": river_maxima.get("Brassall"),
+        "040831": river_maxima.get("Ipswich"),
+    }
+
+    river_df["24 Hour Max (m)"] = (
+        river_df["Gauge Number"]
+        .astype(str)
+        .str.zfill(6)
+        .map(river_max_lookup)
+    )
+    
     # Preserve six-character gauge numbers.
     river_df["Gauge Number"] = (
         river_df["Gauge Number"]
@@ -1712,8 +1742,12 @@ if river_records:
                     format="%.2f m"
                 )
             ),
+            "24 Hour Max (m)": (
+                st.column_config.NumberColumn(
+                    format="%.2f m"
+                )
+            ),
         },
-    )
 
     st.caption(
         "Current River Level is adopted from Height (m). "
