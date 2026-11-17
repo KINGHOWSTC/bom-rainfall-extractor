@@ -842,7 +842,7 @@ def csv_bytes(df):
 EXCEL_TEMPLATE_PATH = Path(
     __file__
 ).with_name(
-    "FloodWarningSystem_Template.xlsx"
+    "Flood_Risk_Assessment_TEMPLATE_vB.xlsx"
 )
 
 
@@ -1096,7 +1096,7 @@ def populate_observed_rainfall_rows(
 # =========================================================
 
 # Fixed row mapping for the Current River Levels section
-# in FloodWarningSystem_Template.xlsx.
+# in Flood_Risk_Assessment_TEMPLATE_vB.xlsx.
 #
 # Template columns:
 #   C = Location
@@ -1299,7 +1299,7 @@ def build_completed_excel(
 
     if not EXCEL_TEMPLATE_PATH.exists():
         raise FileNotFoundError(
-            "FloodWarningSystem_Template.xlsx was not found "
+            "Flood_Risk_Assessment_TEMPLATE_vB.xlsx was not found "
             "beside streamlit_app.py."
         )
 
@@ -2012,7 +2012,7 @@ if excel_ready:
                 "Download Completed Daily Record (.xlsx)",
                 data=completed_excel,
                 file_name=(
-                    "FloodWarningSystem_"
+                    "Flood_Risk_Assessment_"
                     f"{download_timestamp}.xlsx"
                 ),
                 mime=(
