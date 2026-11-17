@@ -1379,16 +1379,16 @@ def build_completed_excel(
     river_max_lookup,
 ):
     """
-    Open the Excel template, populate a fresh copy in memory and
-    return the completed workbook as bytes.
+    Open the Excel template, populate a fresh copy in memory,
+    and return the completed workbook as bytes.
 
-    The original template in GitHub is never edited or overwritten.
+    The original template is never edited or overwritten.
     """
 
     if not EXCEL_TEMPLATE_PATH.exists():
         raise FileNotFoundError(
-            "Flood_Risk_Assessment_TEMPLATE_vB.xlsx was not found "
-            "beside streamlit_app.py."
+            "Flood_Risk_Assessment_TEMPLATE_vB.xlsx "
+            "was not found beside streamlit_app.py."
         )
 
     workbook = load_workbook(
@@ -1398,21 +1398,48 @@ def build_completed_excel(
     # Use the first worksheet in the template.
     worksheet = workbook.active
 
-    populate_forecast_rows(
-        worksheet,
-        forecast_rows,
+    # Stop with a precise message if the new template has
+    # merged cells in any app output location.
+    validate_excel_output_cells(
+        worksheet
     )
 
-    populate_observed_rainfall_rows(
-        worksheet,
-        rainfall_table,
-    )
+    try:
+        populate_forecast_rows(
+            worksheet,
+            forecast_rows,
+        )
 
-    populate_river_rows(
-        worksheet,
-        river_records,
-        river_max_lookup,
-    )
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating rainfall forecast rows "
+            f"3:8: {exc}"
+        ) from exc
+
+    try:
+        populate_observed_rainfall_rows(
+            worksheet,
+            rainfall_table,
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating observed rainfall rows "
+            f"10:15: {exc}"
+        ) from exc
+
+    try:
+        populate_river_rows(
+            worksheet,
+            river_records,
+            river_max_lookup,
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating river-level rows "
+            f"28:41: {exc}"
+        ) from exc
 
     output = BytesIO()
 
