@@ -1470,7 +1470,6 @@ def build_completed_excel(
     return output.getvalue()
 
 st.title("Rainfall Data Extractor")
-st.caption("Selected locations: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
 st.markdown(
     """
