@@ -1697,6 +1697,8 @@ st.divider()
 # Observed rainfall
 # =========================================================
 
+st.subheader("Rainfall Occurred")
+
 rainfall_summary = latest_table(
     df
 )
