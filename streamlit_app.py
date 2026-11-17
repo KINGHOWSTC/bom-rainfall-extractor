@@ -1559,9 +1559,9 @@ with st.container(
     key="floating-rainfall-refresh",
 ):
     retrieve_clicked = st.button(
-        "Retrieve Latest Rainfall",
+        "Retrieve Latest Data",
         type="primary",
-        key="retrieve_latest_rainfall",
+        key="retrieve_latest_data",
         width="content",
     )
 
@@ -1831,11 +1831,6 @@ else:
 st.divider()
 
 st.subheader("Current River Levels")
-
-river_refresh = st.button(
-    "Retrieve current river levels",
-    key="river_level_refresh",
-)
 
 if (
     river_refresh
