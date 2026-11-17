@@ -8,6 +8,7 @@ import json
 import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
 
 import rainfall_backend as rb
 import river_level_backend as river
@@ -1096,7 +1097,7 @@ def populate_observed_rainfall_rows(
 # =========================================================
 
 # Fixed row mapping for the Current River Levels section
-# in Flood_Risk_Assessment_TEMPLATE_vB.xlsx.
+# in FloodWarningSystem_Template.xlsx.
 #
 # Template columns:
 #   C = Location
@@ -1282,6 +1283,93 @@ def populate_river_rows(
             record.get(
                 "Rising/Falling/Steady"
             )
+        )
+
+def validate_excel_output_cells(worksheet):
+    """
+    Confirm that every cell populated by the app is writable.
+
+    A merged range can only be written through its top-left cell.
+    This function reports the exact invalid destination cell and
+    the merged range containing it.
+    """
+
+    output_cells = []
+
+    # Rainfall forecast rows.
+    for row_number in range(3, 9):
+        for column_number in range(5, 8):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    # Observed rainfall rows.
+    for row_number in range(10, 16):
+        for column_number in range(5, 9):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    # Dynamic observed-rainfall heading.
+    output_cells.append("G9")
+
+    # River rows:
+    # F = observation time
+    # G = current level
+    # H = 24-hour maximum
+    # I = tendency
+    for row_number in range(28, 42):
+        for column_number in range(6, 10):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    invalid_cells = []
+
+    for coordinate in output_cells:
+        cell = worksheet[coordinate]
+
+        if not isinstance(cell, MergedCell):
+            continue
+
+        merged_range_name = None
+
+        for merged_range in worksheet.merged_cells.ranges:
+            if coordinate in merged_range:
+                merged_range_name = str(
+                    merged_range
+                )
+                break
+
+        invalid_cells.append(
+            (
+                coordinate,
+                merged_range_name
+                or "unknown merged range",
+            )
+        )
+
+    if invalid_cells:
+        details = "; ".join(
+            f"{coordinate} is inside {merged_range}"
+            for coordinate, merged_range
+            in invalid_cells
+        )
+
+        raise ValueError(
+            "The Excel template contains merged cells in "
+            f"app output locations: {details}. "
+            "Unmerge these output cells in the template. "
+            "Each destination cell must be an individual cell."
         )
 
 def build_completed_excel(
