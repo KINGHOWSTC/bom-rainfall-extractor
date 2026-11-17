@@ -1615,13 +1615,8 @@ st.caption(
     "The 5 Day Forecast includes Today through five days ahead."
 )
 
-forecast_refresh = st.button(
-    "Refresh rainfall forecasts",
-    key="forecast_refresh",
-)
-
 if (
-    forecast_refresh
+    retrieve_clicked
     or "forecast_rows" not in st.session_state
 ):
     with st.spinner(
