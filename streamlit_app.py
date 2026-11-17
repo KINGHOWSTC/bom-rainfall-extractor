@@ -1833,11 +1833,14 @@ st.divider()
 st.subheader("Current River Levels")
 
 if (
-    river_refresh
+    retrieve_clicked
     or "river_level_records"
     not in st.session_state
 ):
     try:
+        if retrieve_clicked:
+            load_river_maxima.clear()
+            
         river_records, river_issued, river_source = (
             river.collect_river_levels()
         )
