@@ -8,10 +8,41 @@ import json
 import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
 
 import rainfall_backend as rb
 import river_level_backend as river
 import forecast_backend as forecast
+from river_scraper import get_all_24h_maxima
+@st.cache_data(ttl=900)
+def load_river_maxima():
+    return get_all_24h_maxima()
+
+def build_river_max_lookup(river_maxima):
+    """
+    Map BoM gauge numbers to the corresponding scraped
+    24-hour maximum river levels.
+
+    The dictionary keys used with river_maxima.get() must
+    exactly match the names configured in river_scraper.py.
+    """
+
+    return {
+        "540065": river_maxima.get("Peak Crossing"),
+        "540062": river_maxima.get("Loamside"),
+        "540057": river_maxima.get("Kalbar Weir"),
+        "540387": river_maxima.get("Harrisville"),
+        "540180": river_maxima.get("Amberley"),
+        "540157": river_maxima.get("Adams Bridge"),
+        "540388": river_maxima.get("Rosewood"),
+        "540147": river_maxima.get("Five Mile Bridge"),
+        "540504": river_maxima.get("Walloon"),
+        "040838": river_maxima.get("Three Mile Bridge"),
+        "540216": river_maxima.get("Berrys Lagoon"),
+        "040836": river_maxima.get("One Mile Bridge"),
+        "540250": river_maxima.get("Brassall"),
+        "040831": river_maxima.get("Ipswich"),
+    }
 
 st.set_page_config(page_title="Rainfall Data Extractor", page_icon="🌧️", layout="wide")
 
@@ -812,7 +843,7 @@ def csv_bytes(df):
 EXCEL_TEMPLATE_PATH = Path(
     __file__
 ).with_name(
-    "FloodWarningSystem_Template.xlsx"
+    "Flood_Risk_Assessment_TEMPLATE_vB.xlsx"
 )
 
 
@@ -913,32 +944,38 @@ def populate_forecast_rows(
     forecast_rows,
 ):
     """
-    Populate the Rainfall Forecast section.
+    Populate rainfall forecasts in the new Excel template.
 
-    Rows:
-        3–8
+    Fixed row mapping:
+        14 = Moogerah
+        15 = Warrill View
+        16 = Mount Walker
+        17 = Rosewood
+        18 = Lyons
+        19 = Ipswich
 
-    Columns populated:
+    Columns:
         E = 1 Day Forecast
         F = 3 Day Forecast
         G = 5 Day Forecast
-
-    All other cells remain untouched.
     """
 
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=3,
-        last_row=8,
-    )
+    forecast_row_lookup = {
+        "Moogerah": 14,
+        "Warrill View": 15,
+        "Mount Walker": 16,
+        "Rosewood": 17,
+        "Lyons": 18,
+        "Ipswich": 19,
+    }
 
     for record in forecast_rows:
-        gauge = normalise_gauge(
-            record.get("Station Number")
-        )
+        location = str(
+            record.get("Location", "")
+        ).strip()
 
-        row_number = row_lookup.get(
-            gauge
+        row_number = forecast_row_lookup.get(
+            location
         )
 
         if row_number is None:
@@ -968,25 +1005,36 @@ def populate_forecast_rows(
             record.get("5 Day Forecast")
         )
 
-
 def populate_observed_rainfall_rows(
     worksheet,
     rainfall_table,
 ):
     """
-    Populate observed-rainfall rows 10:15.
+    Populate observed rainfall in the new Excel template.
 
-    E = Past 3 Hours
-    F = Past 6 Hours
-    G = Current Rainfall Period or Past 24 Hours
-    H = Past 2 Days
+    Fixed row mapping:
+        21 = Moogerah
+        22 = Warrill View
+        23 = Mount Walker
+        24 = Rosewood
+        25 = Lyons
+        26 = Ipswich
+
+    Columns:
+        E = Past 3 Hours
+        F = Past 6 Hours
+        G = Past 24 Hours or Current Rainfall Period
+        H = Past 2 Days
     """
 
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=10,
-        last_row=15,
-    )
+    rainfall_row_lookup = {
+        "Moogerah": 21,
+        "Warrill View": 22,
+        "Mount Walker": 23,
+        "Rosewood": 24,
+        "Lyons": 25,
+        "Ipswich": 26,
+    }
 
     if (
         "Past 24 hours (mm)"
@@ -996,26 +1044,18 @@ def populate_observed_rainfall_rows(
             "Past 24 hours (mm)"
         )
 
-        worksheet["G9"] = (
-            "Past 24 Hours"
-        )
-
     else:
         daily_column_name = (
             "Current rainfall period (mm)"
         )
 
-        worksheet["G9"] = (
-            "Current Rainfall Period"
-        )
-
     for _, record in rainfall_table.iterrows():
-        gauge = normalise_gauge(
-            record.get("Station number")
-        )
+        location = str(
+            record.get("Location", "")
+        ).strip()
 
-        row_number = row_lookup.get(
-            gauge
+        row_number = rainfall_row_lookup.get(
+            location
         )
 
         if row_number is None:
@@ -1041,7 +1081,7 @@ def populate_observed_rainfall_rows(
             )
         )
 
-        # G: Dynamic daily rainfall value
+        # G: Past 24 Hours or Current Rainfall Period
         worksheet.cell(
             row=row_number,
             column=7,
@@ -1061,77 +1101,191 @@ def populate_observed_rainfall_rows(
             )
         )
 
+# =========================================================
+# River-level Excel template mapping
+# =========================================================
+
+# Fixed row mapping for the Current River Levels section
+# in Flood_Risk_Assessment_TEMPLATE_vB.xlsx.
+#
+# Template columns:
+#   C = Location
+#   F = Observation Time
+#   G = Current River Level
+#   H = 24-hour River Maximum
+#   I = Rising/Steady/Falling
+
+RIVER_EXCEL_ROWS = {
+    "540065": 28,  # Peak Crossing
+    "540062": 29,  # Loamside
+    "540057": 30,  # Kalbar
+    "540387": 31,  # Harrisville
+    "540180": 32,  # Amberley
+    "540157": 33,  # Adams Bridge
+    "540388": 34,  # Rosewood
+    "540147": 35,  # Five Mile Bridge
+    "540504": 36,  # Walloon
+    "040838": 37,  # Three Mile Bridge
+    "540216": 38,  # Berry's Lagoon
+    "040836": 39,  # One Mile Bridge
+    "540250": 40,  # Hancocks Bridge
+    "040831": 41,  # Ipswich
+}
 
 def populate_river_rows(
     worksheet,
     river_records,
+    river_max_lookup,
 ):
     """
     Populate the Current River Levels section.
 
-    Template layout:
-        B17:B28 = Gauge numbers, prefilled
-        C17:C28 = Locations, prefilled
-        D17:D28 = Links, prefilled
-        E17:E28 = Observation Time
-        F17:F28 = Current River Level
-        J17:J28 = Rising/Falling/Steady
+    Fixed template layout:
+        C28:C41 = Locations, prefilled
+        F28:F41 = Observation Time
+        G28:G41 = Current River Level
+        H28:H41 = 24-hour River Maximum
+        I28:I41 = Rising/Steady/Falling
 
-    The function does not modify:
-        A = Risk Element
-        B = Gauges
-        C = Location
-        D = Link
-        G:I = Other template fields
+    Rows:
+        28 = Peak Crossing
+        29 = Loamside
+        30 = Kalbar
+        31 = Harrisville
+        32 = Amberley
+        33 = Adams Bridge
+        34 = Rosewood
+        35 = Five Mile Bridge
+        36 = Walloon
+        37 = Three Mile Bridge
+        38 = Berry's Lagoon
+        39 = One Mile Bridge
+        40 = Hancocks Bridge
+        41 = Ipswich
+
+    The template location names in column C are not modified.
     """
-
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=17,
-        last_row=28,
-    )
 
     for record in river_records:
         gauge = normalise_gauge(
             record.get("Gauge Number")
         )
 
-        row_number = row_lookup.get(
+        row_number = RIVER_EXCEL_ROWS.get(
             gauge
         )
 
         if row_number is None:
             continue
 
-        # E: Observation Time
+        # =================================================
+        # F: Observation Time
+        # =================================================
+
         observation_time_cell = worksheet.cell(
             row=row_number,
-            column=5,
+            column=6,
         )
 
         observation_time_cell.value = excel_safe_value(
             record.get("Observation Time")
         )
 
-        # F: Current River Level
+        # =================================================
+        # G: Current River Level
+        # =================================================
+
+        current_level = record.get(
+            "Current River Level (m)"
+        )
+
+        try:
+            current_level_numeric = (
+                float(current_level)
+                if (
+                    current_level is not None
+                    and not pd.isna(current_level)
+                )
+                else None
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            current_level_numeric = None
+
         river_level_cell = worksheet.cell(
             row=row_number,
-            column=6,
+            column=7,
         )
 
         river_level_cell.value = excel_safe_value(
-            record.get(
-                "Current River Level (m)"
-            )
+            current_level_numeric
         )
 
-        # Keep the value numeric but display the unit.
         river_level_cell.number_format = '0.00" m"'
 
-        # J: Rising/Falling/Steady
+        # =================================================
+        # H: 24-hour River Maximum
+        # =================================================
+
+        scraped_max = river_max_lookup.get(
+            gauge
+        )
+
+        try:
+            scraped_max_numeric = (
+                float(scraped_max)
+                if (
+                    scraped_max is not None
+                    and not pd.isna(scraped_max)
+                )
+                else None
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            scraped_max_numeric = None
+
+        # Include the latest current level in the maximum.
+        # This protects against the current FTP bulletin
+        # updating before the historical table.
+        if (
+            scraped_max_numeric is not None
+            and current_level_numeric is not None
+        ):
+            river_maximum = max(
+                scraped_max_numeric,
+                current_level_numeric,
+            )
+
+        elif scraped_max_numeric is not None:
+            river_maximum = scraped_max_numeric
+
+        else:
+            river_maximum = current_level_numeric
+
+        max_cell = worksheet.cell(
+            row=row_number,
+            column=8,
+        )
+
+        max_cell.value = excel_safe_value(
+            river_maximum
+        )
+
+        max_cell.number_format = '0.00" m"'
+
+        # =================================================
+        # I: Rising/Steady/Falling
+        # =================================================
+
         tendency_cell = worksheet.cell(
             row=row_number,
-            column=10,
+            column=9,
         )
 
         tendency_cell.value = excel_safe_value(
@@ -1140,23 +1294,119 @@ def populate_river_rows(
             )
         )
 
+def validate_excel_output_cells(worksheet):
+    """
+    Confirm that all cells populated by the app are writable.
+
+    New template mappings:
+
+    Forecasts:
+        E14:E19 = 1 Day Forecast
+        F14:F19 = 3 Day Forecast
+        G14:G19 = 5 Day Forecast
+
+    Observed rainfall:
+        E21:E26 = Past 3 Hours
+        F21:F26 = Past 6 Hours
+        G21:G26 = Past 24 Hours/current period
+        H21:H26 = Past 2 Days
+
+    River levels:
+        F28:F41 = Observation Time
+        G28:G41 = Current River Level
+        H28:H41 = 24-hour Maximum
+        I28:I41 = Tendency
+    """
+
+    output_cells = []
+
+    # Forecast cells: E14:G19
+    for row_number in range(14, 20):
+        for column_number in range(5, 8):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    # Observed rainfall cells: E21:H26
+    for row_number in range(21, 27):
+        for column_number in range(5, 9):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    # River cells: F28:I41
+    for row_number in range(28, 42):
+        for column_number in range(6, 10):
+            output_cells.append(
+                worksheet.cell(
+                    row=row_number,
+                    column=column_number,
+                ).coordinate
+            )
+
+    invalid_cells = []
+
+    for coordinate in output_cells:
+        cell = worksheet[coordinate]
+
+        if not isinstance(cell, MergedCell):
+            continue
+
+        merged_range_name = None
+
+        for merged_range in (
+            worksheet.merged_cells.ranges
+        ):
+            if coordinate in merged_range:
+                merged_range_name = str(
+                    merged_range
+                )
+                break
+
+        invalid_cells.append(
+            (
+                coordinate,
+                merged_range_name
+                or "unknown merged range",
+            )
+        )
+
+    if invalid_cells:
+        details = "; ".join(
+            f"{coordinate} is inside {merged_range}"
+            for coordinate, merged_range
+            in invalid_cells
+        )
+
+        raise ValueError(
+            "The Excel template contains merged cells in "
+            f"app output locations: {details}. "
+            "Each output cell must be an individual cell."
+        )
 
 def build_completed_excel(
     forecast_rows,
     rainfall_table,
     river_records,
+    river_max_lookup,
 ):
     """
-    Open the Excel template, populate a fresh copy in memory and
-    return the completed workbook as bytes.
+    Open the Excel template, populate a fresh copy in memory,
+    and return the completed workbook as bytes.
 
-    The original template in GitHub is never edited or overwritten.
+    The original template is never edited or overwritten.
     """
 
     if not EXCEL_TEMPLATE_PATH.exists():
         raise FileNotFoundError(
-            "FloodWarningSystem_Template.xlsx was not found "
-            "beside streamlit_app.py."
+            "Flood_Risk_Assessment_TEMPLATE_vB.xlsx "
+            "was not found beside streamlit_app.py."
         )
 
     workbook = load_workbook(
@@ -1166,20 +1416,48 @@ def build_completed_excel(
     # Use the first worksheet in the template.
     worksheet = workbook.active
 
-    populate_forecast_rows(
-        worksheet,
-        forecast_rows,
+    # Stop with a precise message if the new template has
+    # merged cells in any app output location.
+    validate_excel_output_cells(
+        worksheet
     )
 
-    populate_observed_rainfall_rows(
-        worksheet,
-        rainfall_table,
-    )
+    try:
+        populate_forecast_rows(
+            worksheet,
+            forecast_rows,
+        )
 
-    populate_river_rows(
-        worksheet,
-        river_records,
-    )
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating rainfall forecast rows "
+            f"14:19: {exc}"
+        ) from exc
+
+    try:
+        populate_observed_rainfall_rows(
+            worksheet,
+            rainfall_table,
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating observed rainfall rows "
+            f"21:26: {exc}"
+        ) from exc
+
+    try:
+        populate_river_rows(
+            worksheet,
+            river_records,
+            river_max_lookup,
+        )
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed while populating river-level rows "
+            f"28:41: {exc}"
+        ) from exc
 
     output = BytesIO()
 
@@ -1192,7 +1470,6 @@ def build_completed_excel(
     return output.getvalue()
 
 st.title("Rainfall Data Extractor")
-st.caption("Selected locations: Moogerah, Warrill View, Mount Walker, Rosewood, Lyons and Ipswich")
 
 st.markdown(
     """
@@ -1282,9 +1559,9 @@ with st.container(
     key="floating-rainfall-refresh",
 ):
     retrieve_clicked = st.button(
-        "Retrieve Latest Rainfall",
+        "Retrieve Latest Data",
         type="primary",
-        key="retrieve_latest_rainfall",
+        key="retrieve_latest_data",
         width="content",
     )
 
@@ -1321,7 +1598,7 @@ if df.empty:
     )
 
     st.info(
-        "Try Retrieve Latest Rainfall again. If the issue continues, "
+        "Try Retrieve Latest Data again. If the issue continues, "
         "review Technical Tools at the bottom of the page."
     )
 
@@ -1332,19 +1609,14 @@ if df.empty:
 st.subheader("Rainfall Forecasts")
 
 st.caption(
-    "Cumulative Rain Amount forecasts from Elders Weather. "
+    "Cumulative Rain Amount forecasts. "
     "The 1 Day Forecast includes Today and Tomorrow. "
     "The 3 Day Forecast includes Today through three days ahead. "
     "The 5 Day Forecast includes Today through five days ahead."
 )
 
-forecast_refresh = st.button(
-    "Refresh rainfall forecasts",
-    key="forecast_refresh",
-)
-
 if (
-    forecast_refresh
+    retrieve_clicked
     or "forecast_rows" not in st.session_state
 ):
     with st.spinner(
@@ -1419,6 +1691,8 @@ st.divider()
 # =========================================================
 # Observed rainfall
 # =========================================================
+
+st.subheader("Rainfall Occurred")
 
 rainfall_summary = latest_table(
     df
@@ -1553,17 +1827,15 @@ st.divider()
 
 st.subheader("Current River Levels")
 
-river_refresh = st.button(
-    "Retrieve current river levels",
-    key="river_level_refresh",
-)
-
 if (
-    river_refresh
+    retrieve_clicked
     or "river_level_records"
     not in st.session_state
 ):
     try:
+        if retrieve_clicked:
+            load_river_maxima.clear()
+            
         river_records, river_issued, river_source = (
             river.collect_river_levels()
         )
@@ -1607,11 +1879,69 @@ if river_records:
         river_records
     )
 
-    # Preserve six-character gauge numbers.
+    try:
+        river_maxima = load_river_maxima()
+
+    except Exception as exc:
+        river_maxima = {}
+
+        st.warning(
+            "The 24-hour river maxima could not be retrieved. "
+            f"Current river levels are still available. Error: {exc}"
+        )
+
+    river_max_lookup = build_river_max_lookup(
+        river_maxima
+    )
+
+    # Preserve gauge numbers as six-character strings.
     river_df["Gauge Number"] = (
         river_df["Gauge Number"]
         .astype(str)
+        .str.strip()
+        .str.replace(
+            r"\.0$",
+            "",
+            regex=True,
+        )
         .str.zfill(6)
+    )
+
+    # Ensure river-level values are numeric.
+    river_df["Current River Level (m)"] = (
+        pd.to_numeric(
+            river_df[
+                "Current River Level (m)"
+            ],
+            errors="coerce",
+        )
+    )
+
+    # Add the scraped 24-hour maximum.
+    river_df["24 Hour Max (m)"] = (
+        river_df["Gauge Number"]
+        .map(river_max_lookup)
+    )
+
+    river_df["24 Hour Max (m)"] = (
+        pd.to_numeric(
+            river_df["24 Hour Max (m)"],
+            errors="coerce",
+        )
+    )
+
+    # The latest current level must be included in the
+    # effective 24-hour maximum. This handles a rapidly
+    # rising river where the current FTP bulletin is newer
+    # than the historical table.
+    river_df["24 Hour Max (m)"] = river_df[
+        [
+            "24 Hour Max (m)",
+            "Current River Level (m)",
+        ]
+    ].max(
+        axis=1,
+        skipna=True,
     )
 
     # Enforce one row per gauge.
@@ -1625,21 +1955,23 @@ if river_records:
     )
 
     river_gauge_order = [
-        "540065",
-        "540062",
-        "540057",
-        "540387",
-        "540180",
-        "540157",
-        "540388",
-        "540147",
-        "540504",
-        "040836",
-        "540250",
-        "040831",
+        "540065",  # Peak Crossing
+        "540062",  # Loamside
+        "540057",  # Kalbar
+        "540387",  # Harrisville
+        "540180",  # Amberley
+        "540157",  # Adams Bridge
+        "540388",  # Rosewood
+        "540147",  # Five Mile Bridge
+        "540504",  # Walloon
+        "040838",  # Three Mile Bridge
+        "540216",  # Berrys Lagoon
+        "040836",  # One Mile Bridge
+        "540250",  # Hancocks Bridge
+        "040831",  # Ipswich
     ]
 
-    river_df["Gauge Number"] = pd.Categorical(
+    river_df["Gauge Order"] = pd.Categorical(
         river_df["Gauge Number"],
         categories=river_gauge_order,
         ordered=True,
@@ -1647,23 +1979,31 @@ if river_records:
 
     river_df = (
         river_df
-        .sort_values("Gauge Number")
+        .sort_values("Gauge Order")
+        .drop(columns=["Gauge Order"])
         .reset_index(drop=True)
     )
 
-    unique_river_gauges = len(
-        river_df[
-            "Gauge Number"
-        ].dropna().unique()
+    unique_river_gauges = river_df[
+        "Gauge Number"
+    ].nunique()
+
+    expected_river_gauges = len(
+        river_gauge_order
     )
 
-    if unique_river_gauges != 12:
+    if (
+        unique_river_gauges
+        != expected_river_gauges
+    ):
         st.warning(
-            f"Expected 12 unique river gauges but received "
-            f"{unique_river_gauges}."
+            f"Expected {expected_river_gauges} unique river "
+            f"gauges but received {unique_river_gauges}."
         )
 
-    info_left, info_middle, info_right = st.columns(3)
+    info_left, info_middle, info_right = (
+        st.columns(3)
+    )
 
     info_left.metric(
         "Data source",
@@ -1691,11 +2031,10 @@ if river_records:
         ),
     )
 
-    # Header + 12 gauge rows + horizontal-scroll allowance.
-
+    # Header, gauge rows and horizontal-scroll allowance.
     river_table_height = (
-    32
-    + len(river_df) * 35
+        32
+        + len(river_df) * 35
     )
 
     st.dataframe(
@@ -1712,18 +2051,26 @@ if river_records:
                     format="%.2f m"
                 )
             ),
+            "24 Hour Max (m)": (
+                st.column_config.NumberColumn(
+                    format="%.2f m"
+                )
+            ),
         },
     )
 
     st.caption(
         "Current River Level is adopted from Height (m). "
-        "Rising/Falling/Steady is adopted from Tendency."
-    )    
+        "Rising/Falling/Steady is adopted from Tendency. "
+        "The 24-hour maximum is the greater of the scraped "
+        "24-hour maximum and the latest current river level."
+    )
 
 else:
     st.info(
         "No current river-level records are available."
     )
+    
 
 # =========================================================
 # Completed Excel daily record
@@ -1758,12 +2105,25 @@ excel_ready = (
     and bool(river_for_excel)
 )
 
+river_maxima_for_excel = {}
+
+try:
+    river_maxima_for_excel = load_river_maxima()
+
+except Exception:
+    river_maxima_for_excel = {}
+
+river_excel_max_lookup = build_river_max_lookup(
+    river_maxima_for_excel
+)
+
 if excel_ready:
     try:
         completed_excel = build_completed_excel(
             forecast_rows=forecast_for_excel,
             rainfall_table=rainfall_for_excel,
             river_records=river_for_excel,
+            river_max_lookup=river_excel_max_lookup,
         )
 
         download_timestamp = datetime.now(
@@ -1779,7 +2139,7 @@ if excel_ready:
                 "Download Completed Daily Record (.xlsx)",
                 data=completed_excel,
                 file_name=(
-                    "FloodWarningSystem_"
+                    "Flood_Risk_Assessment_"
                     f"{download_timestamp}.xlsx"
                 ),
                 mime=(
@@ -1984,9 +2344,10 @@ with st.expander(
         )
 
         st.write(
-            "Past 6 hours is calculated from the required 3-hour "
-            "rainfall periods. Past 2 days is calculated from the "
-            "required completed 24-hour rainfall periods."
+            "Past 3 hours and Past 6 hours are rolling totals "
+            "calculated from the latest hourly rainfall records. "
+            "Past 2 days is calculated from the required completed "
+            "24-hour rainfall periods."
         )
 
         st.write(

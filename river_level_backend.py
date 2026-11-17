@@ -104,6 +104,14 @@ TARGET_GAUGES = [
         "location": "Walloon",
     },
     {
+        "gauge": "040838",
+        "location": "Three Mile Bridge",
+    },
+    {
+        "gauge": "540216",
+        "location": "Berrys Lagoon",
+    },
+    {
         "gauge": "040836",
         "location": "One Mile Bridge",
     },
