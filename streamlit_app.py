@@ -944,32 +944,38 @@ def populate_forecast_rows(
     forecast_rows,
 ):
     """
-    Populate the Rainfall Forecast section.
+    Populate rainfall forecasts in the new Excel template.
 
-    Rows:
-        3–8
+    Fixed row mapping:
+        14 = Moogerah
+        15 = Warrill View
+        16 = Mount Walker
+        17 = Rosewood
+        18 = Lyons
+        19 = Ipswich
 
-    Columns populated:
+    Columns:
         E = 1 Day Forecast
         F = 3 Day Forecast
         G = 5 Day Forecast
-
-    All other cells remain untouched.
     """
 
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=3,
-        last_row=8,
-    )
+    forecast_row_lookup = {
+        "Moogerah": 14,
+        "Warrill View": 15,
+        "Mount Walker": 16,
+        "Rosewood": 17,
+        "Lyons": 18,
+        "Ipswich": 19,
+    }
 
     for record in forecast_rows:
-        gauge = normalise_gauge(
-            record.get("Station Number")
-        )
+        location = str(
+            record.get("Location", "")
+        ).strip()
 
-        row_number = row_lookup.get(
-            gauge
+        row_number = forecast_row_lookup.get(
+            location
         )
 
         if row_number is None:
@@ -999,25 +1005,36 @@ def populate_forecast_rows(
             record.get("5 Day Forecast")
         )
 
-
 def populate_observed_rainfall_rows(
     worksheet,
     rainfall_table,
 ):
     """
-    Populate observed-rainfall rows 10:15.
+    Populate observed rainfall in the new Excel template.
 
-    E = Past 3 Hours
-    F = Past 6 Hours
-    G = Current Rainfall Period or Past 24 Hours
-    H = Past 2 Days
+    Fixed row mapping:
+        21 = Moogerah
+        22 = Warrill View
+        23 = Mount Walker
+        24 = Rosewood
+        25 = Lyons
+        26 = Ipswich
+
+    Columns:
+        E = Past 3 Hours
+        F = Past 6 Hours
+        G = Past 24 Hours or Current Rainfall Period
+        H = Past 2 Days
     """
 
-    row_lookup = gauge_row_lookup(
-        worksheet,
-        first_row=10,
-        last_row=15,
-    )
+    rainfall_row_lookup = {
+        "Moogerah": 21,
+        "Warrill View": 22,
+        "Mount Walker": 23,
+        "Rosewood": 24,
+        "Lyons": 25,
+        "Ipswich": 26,
+    }
 
     if (
         "Past 24 hours (mm)"
@@ -1027,26 +1044,18 @@ def populate_observed_rainfall_rows(
             "Past 24 hours (mm)"
         )
 
-        worksheet["G9"] = (
-            "Past 24 Hours"
-        )
-
     else:
         daily_column_name = (
             "Current rainfall period (mm)"
         )
 
-        worksheet["G9"] = (
-            "Current Rainfall Period"
-        )
-
     for _, record in rainfall_table.iterrows():
-        gauge = normalise_gauge(
-            record.get("Station number")
-        )
+        location = str(
+            record.get("Location", "")
+        ).strip()
 
-        row_number = row_lookup.get(
-            gauge
+        row_number = rainfall_row_lookup.get(
+            location
         )
 
         if row_number is None:
@@ -1072,7 +1081,7 @@ def populate_observed_rainfall_rows(
             )
         )
 
-        # G: Dynamic daily rainfall value
+        # G: Past 24 Hours or Current Rainfall Period
         worksheet.cell(
             row=row_number,
             column=7,
@@ -1287,17 +1296,32 @@ def populate_river_rows(
 
 def validate_excel_output_cells(worksheet):
     """
-    Confirm that every cell populated by the app is writable.
+    Confirm that all cells populated by the app are writable.
 
-    A merged range can only be written through its top-left cell.
-    This function reports the exact invalid destination cell and
-    the merged range containing it.
+    New template mappings:
+
+    Forecasts:
+        E14:E19 = 1 Day Forecast
+        F14:F19 = 3 Day Forecast
+        G14:G19 = 5 Day Forecast
+
+    Observed rainfall:
+        E21:E26 = Past 3 Hours
+        F21:F26 = Past 6 Hours
+        G21:G26 = Past 24 Hours/current period
+        H21:H26 = Past 2 Days
+
+    River levels:
+        F28:F41 = Observation Time
+        G28:G41 = Current River Level
+        H28:H41 = 24-hour Maximum
+        I28:I41 = Tendency
     """
 
     output_cells = []
 
-    # Rainfall forecast rows.
-    for row_number in range(3, 9):
+    # Forecast cells: E14:G19
+    for row_number in range(14, 20):
         for column_number in range(5, 8):
             output_cells.append(
                 worksheet.cell(
@@ -1306,8 +1330,8 @@ def validate_excel_output_cells(worksheet):
                 ).coordinate
             )
 
-    # Observed rainfall rows.
-    for row_number in range(10, 16):
+    # Observed rainfall cells: E21:H26
+    for row_number in range(21, 27):
         for column_number in range(5, 9):
             output_cells.append(
                 worksheet.cell(
@@ -1316,14 +1340,7 @@ def validate_excel_output_cells(worksheet):
                 ).coordinate
             )
 
-    # Dynamic observed-rainfall heading.
-    output_cells.append("G9")
-
-    # River rows:
-    # F = observation time
-    # G = current level
-    # H = 24-hour maximum
-    # I = tendency
+    # River cells: F28:I41
     for row_number in range(28, 42):
         for column_number in range(6, 10):
             output_cells.append(
@@ -1343,7 +1360,9 @@ def validate_excel_output_cells(worksheet):
 
         merged_range_name = None
 
-        for merged_range in worksheet.merged_cells.ranges:
+        for merged_range in (
+            worksheet.merged_cells.ranges
+        ):
             if coordinate in merged_range:
                 merged_range_name = str(
                     merged_range
@@ -1368,8 +1387,7 @@ def validate_excel_output_cells(worksheet):
         raise ValueError(
             "The Excel template contains merged cells in "
             f"app output locations: {details}. "
-            "Unmerge these output cells in the template. "
-            "Each destination cell must be an individual cell."
+            "Each output cell must be an individual cell."
         )
 
 def build_completed_excel(
