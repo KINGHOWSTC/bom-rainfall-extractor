@@ -20,7 +20,7 @@ def load_river_maxima():
 
 def build_river_max_lookup(river_maxima):
     """
-    Map BoM gauge numbers to the corresponding scraped
+    Map BoM gauge numbers to the corresponding
     24-hour maximum river levels.
 
     The dictionary keys used with river_maxima.get() must
@@ -2062,7 +2062,7 @@ if river_records:
     st.caption(
         "Current River Level is adopted from Height (m). "
         "Rising/Falling/Steady is adopted from Tendency. "
-        "The 24-hour maximum is the greater of the scraped "
+        "The 24-hour maximum is the greater between the "
         "24-hour maximum and the latest current river level."
     )
 
