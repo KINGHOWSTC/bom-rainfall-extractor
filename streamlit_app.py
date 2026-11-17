@@ -1106,7 +1106,7 @@ def populate_observed_rainfall_rows(
 # =========================================================
 
 # Fixed row mapping for the Current River Levels section
-# in FloodWarningSystem_Template.xlsx.
+# in Flood_Risk_Assessment_TEMPLATE_vB.xlsx.
 #
 # Template columns:
 #   C = Location
@@ -1431,7 +1431,7 @@ def build_completed_excel(
     except Exception as exc:
         raise RuntimeError(
             "Failed while populating rainfall forecast rows "
-            f"3:8: {exc}"
+            f"14:19: {exc}"
         ) from exc
 
     try:
@@ -1443,7 +1443,7 @@ def build_completed_excel(
     except Exception as exc:
         raise RuntimeError(
             "Failed while populating observed rainfall rows "
-            f"10:15: {exc}"
+            f"21:26: {exc}"
         ) from exc
 
     try:
@@ -1598,7 +1598,7 @@ if df.empty:
     )
 
     st.info(
-        "Try Retrieve Latest Rainfall again. If the issue continues, "
+        "Try Retrieve Latest Data again. If the issue continues, "
         "review Technical Tools at the bottom of the page."
     )
 
@@ -2344,9 +2344,10 @@ with st.expander(
         )
 
         st.write(
-            "Past 6 hours is calculated from the required 3-hour "
-            "rainfall periods. Past 2 days is calculated from the "
-            "required completed 24-hour rainfall periods."
+            "Past 3 hours and Past 6 hours are rolling totals "
+            "calculated from the latest hourly rainfall records. "
+            "Past 2 days is calculated from the required completed "
+            "24-hour rainfall periods."
         )
 
         st.write(
